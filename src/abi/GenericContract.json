@@ -1,0 +1,9 @@
+[
+    {
+      "constant": true,
+      "inputs": [{ "name": "", "type": "bytes" }],
+      "name": "call",
+      "outputs": [{ "name": "", "type": "bytes" }],
+      "type": "function"
+    }
+  ]

@@ -1,0 +1,86 @@
+[
+    {
+      "inputs": [
+        { "name": "_owners", "type": "address[]" },
+        { "name": "_required", "type": "uint256" }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "name": "sender", "type": "address" },
+        { "indexed": true, "name": "transactionId", "type": "uint256" }
+      ],
+      "name": "Confirmation",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "name": "transactionId", "type": "uint256" }
+      ],
+      "name": "Execution",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "name": "transactionId", "type": "uint256" }
+      ],
+      "name": "ExecutionFailure",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "name": "sender", "type": "address" },
+        { "indexed": true, "name": "transactionId", "type": "uint256" }
+      ],
+      "name": "Submission",
+      "type": "event"
+    },
+    {
+      "inputs": [{ "name": "transactionId", "type": "uint256" }],
+      "name": "confirmTransaction",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "name": "destination", "type": "address" },
+        { "name": "value", "type": "uint256" },
+        { "name": "data", "type": "bytes" }
+      ],
+      "name": "submitTransaction",
+      "outputs": [{ "name": "transactionId", "type": "uint256" }],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "name": "from", "type": "uint256" },
+        { "name": "to", "type": "uint256" },
+        { "name": "pending", "type": "bool" }
+      ],
+      "name": "getTransactionIds",
+      "outputs": [{ "name": "", "type": "uint256[]" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "name": "", "type": "uint256" }],
+      "name": "transactions",
+      "outputs": [
+        { "name": "destination", "type": "address" },
+        { "name": "value", "type": "uint256" },
+        { "name": "data", "type": "bytes" },
+        { "name": "executed", "type": "bool" },
+        { "name": "confirmations", "type": "uint256" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
