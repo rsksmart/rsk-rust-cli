@@ -135,7 +135,7 @@ pub async fn bulk_transfer() -> Result<()> {
                     if input.starts_with("0x") && input.len() == 42 {
                         Ok(())
                     } else {
-                        Err("Please enter a valid Ethereum address starting with 0x".to_string())
+                        Err("Please enter a valid rBTCereum address starting with 0x".to_string())
                     }
                 })
                 .interact()?;
@@ -160,14 +160,14 @@ pub async fn bulk_transfer() -> Result<()> {
     let total = transfers.iter().fold(U256::zero(), |acc, t| acc + t.value);
     
     for (i, transfer) in transfers.iter().enumerate() {
-        println!("{:2}. To: {} - Amount: {} ETH", 
+        println!("{:2}. To: {} - Amount: {} rBTC", 
             i + 1, 
             transfer.to,
             format_eth(transfer.value)
         );
     }
     
-    println!("\nTotal to send: {} ETH", format_eth(total));
+    println!("\nTotal to send: {} rBTC", format_eth(total));
     
     // Get current gas price
     let gas_price = client.get_gas_price().await?;
@@ -178,8 +178,8 @@ pub async fn bulk_transfer() -> Result<()> {
     let total_gas = gas_per_tx.checked_mul(U256::from(transfers.len())).unwrap_or_default();
     let total_gas_cost = total_gas.checked_mul(gas_price).unwrap_or_default();
     
-    println!("Estimated gas cost: {} ETH", format_eth(total_gas_cost));
-    println!("Total cost (amount + gas): {} ETH", format_eth(total + total_gas_cost));
+    println!("Estimated gas cost: {} rBTC", format_eth(total_gas_cost));
+    println!("Total cost (amount + gas): {} rBTC", format_eth(total + total_gas_cost));
     
     // Confirm before sending
     let confirm = Confirm::new()
@@ -278,7 +278,7 @@ fn parse_amount(amount: &str) -> Result<U256> {
     }
 }
 
-/// Format wei amount to ETH with 6 decimal places
+/// Format wei amount to rBTC with 6 decimal places
 fn format_eth(wei: U256) -> String {
     let wei_str = wei.to_string();
     let len = wei_str.len();
