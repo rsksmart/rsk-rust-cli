@@ -29,9 +29,8 @@ pub async fn show_config_menu() -> Result<()> {
         
         // Show current API key status
         let providers = [
-            (ApiProvider::Alchemy, "Alchemy"),
-            (ApiProvider::Infura, "Infura"),
-            (ApiProvider::Etherscan, "Etherscan"),
+            (ApiProvider::RskRpc, "RSK RPC (for blockchain operations)"),
+            (ApiProvider::Alchemy, "Alchemy (for transaction history)"),
         ];
         
         println!("  {}", style("API Keys:").bold());
@@ -142,9 +141,8 @@ async fn add_api_key(config_manager: &ConfigManager) -> Result<()> {
     
     // Select provider
     let providers = [
-        (ApiProvider::Alchemy, "Alchemy"),
-        (ApiProvider::Infura, "Infura"),
-        (ApiProvider::Etherscan, "Etherscan"),
+        (ApiProvider::RskRpc, "RSK RPC (for blockchain operations)"),
+        (ApiProvider::Alchemy, "Alchemy (for transaction history)"),
     ];
     
     let provider_names: Vec<_> = providers.iter().map(|(_, name)| *name).collect();

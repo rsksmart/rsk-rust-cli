@@ -44,6 +44,7 @@ impl EthClient {
             wallet_data.api_key.clone()
         };
 
+        // Use the RPC URL from config (which defaults to public nodes)
         let provider = Provider::<Http>::try_from(&config.network.rpc_url)
             .map_err(|e| anyhow!("Failed to connect to RPC: {}", e))?;
         let wallet = config
