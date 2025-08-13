@@ -98,7 +98,7 @@ impl Network {
                 }
                 // Fall back to Alchemy if available
                 else if let Some(key) = alchemy_api_key {
-                    format!("https://rsk-mainnet.g.alchemy.com/v2/{}", key)
+                    format!("https://rootstock-mainnet.g.alchemy.com/v2/{}", key)
                 }
                 // Default to public node
                 else {
@@ -112,7 +112,7 @@ impl Network {
                 }
                 // Fall back to Alchemy if available
                 else if let Some(key) = alchemy_api_key {
-                    format!("https://rsk-testnet.g.alchemy.com/v2/{}", key)
+                    format!("https://rootstock-testnet.g.alchemy.com/v2/{}", key)
                 }
                 // Default to public node
                 else {
