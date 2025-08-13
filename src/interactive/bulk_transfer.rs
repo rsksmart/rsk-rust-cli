@@ -135,7 +135,7 @@ pub async fn bulk_transfer() -> Result<()> {
                     if input.starts_with("0x") && input.len() == 42 {
                         Ok(())
                     } else {
-                        Err("Please enter a valid rBTCereum address starting with 0x".to_string())
+                        Err("Please enter a valid rBTC address starting with 0x".to_string())
                     }
                 })
                 .interact()?;
