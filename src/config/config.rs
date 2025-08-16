@@ -23,7 +23,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Get the appropriate API key for the current network
+    /// Get the appropriate API key for the current network and provider
     pub fn get_api_key(&self, provider: &ApiProvider) -> Option<&str> {
         let network_str = match self.default_network {
             Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => "mainnet",
@@ -37,12 +37,22 @@ impl Config {
             return Some(&key.key);
         }
         
-        // Fall back to legacy keys for backward compatibility
+        // Fall back to legacy keys for backward compatibility (Alchemy only)
         match (provider, network_str) {
             (ApiProvider::Alchemy, "mainnet") => self.alchemy_mainnet_key.as_deref(),
             (ApiProvider::Alchemy, "testnet") => self.alchemy_testnet_key.as_deref(),
             _ => None,
         }
+    }
+    
+    /// Get RSK RPC API key for blockchain operations
+    pub fn get_rsk_rpc_key(&self) -> Option<&str> {
+        self.get_api_key(&ApiProvider::RskRpc)
+    }
+    
+    /// Get Alchemy API key for transaction history
+    pub fn get_alchemy_key(&self) -> Option<&str> {
+        self.get_api_key(&ApiProvider::Alchemy)
     }
     
     /// Add or update an API key

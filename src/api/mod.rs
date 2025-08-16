@@ -5,18 +5,19 @@ use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ApiProvider {
+    /// Alchemy API - Used for transaction history and advanced queries
     Alchemy,
-    Infura,
-    Etherscan,
-    Custom(String),  // For any other API provider
+    /// RSK RPC API - Primary RPC for blockchain operations (balances, transactions, etc.)
+    RskRpc,
+    /// Custom API provider
+    Custom(String),
 }
 
 impl fmt::Display for ApiProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ApiProvider::Alchemy => write!(f, "Alchemy"),
-            ApiProvider::Infura => write!(f, "Infura"),
-            ApiProvider::Etherscan => write!(f, "Etherscan"),
+            ApiProvider::RskRpc => write!(f, "RSK RPC"),
             ApiProvider::Custom(name) => write!(f, "{}", name),
         }
     }
