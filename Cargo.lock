@@ -4020,7 +4020,7 @@ dependencies = [
  "log",
  "prettytable-rs",
  "qrcode",
- "rand 0.8.5",
+ "rand 0.9.1",
  "reqwest 0.12.20",
  "rpassword",
  "rustyline",
