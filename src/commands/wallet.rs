@@ -55,7 +55,7 @@ impl WalletCommand {
             }
         }
         let wallet = LocalWallet::new(&mut thread_rng());
-        let wallet = Wallet::new(wallet, name, &password)?;
+        let wallet = Wallet::new(wallet, name, password)?;
         let mut wallet_data = if wallet_file.exists() {
             let data = fs::read_to_string(&wallet_file)?;
             serde_json::from_str::<WalletData>(&data)?
@@ -72,7 +72,7 @@ impl WalletCommand {
 
     async fn import_wallet(&self, _config: &Config, private_key: &str, name: &str, password: &str) -> Result<()> {
         let wallet = LocalWallet::from_str(private_key)?;
-        let wallet = Wallet::new(wallet, name, &password)?;
+        let wallet = Wallet::new(wallet, name, password)?;
         let wallet_file = constants::wallet_file_path();
         let mut wallet_data = if wallet_file.exists() {
             let data = fs::read_to_string(&wallet_file)?;
@@ -126,7 +126,7 @@ impl WalletCommand {
         let _ = wallet_data.switch_wallet(&format!("0x{:x}", wallet_address));
         fs::write(&wallet_file, serde_json::to_string_pretty(&wallet_data)?)?;
         println!("{}", format!("✅ Switched to wallet: {}", name).green());
-        println!("Address: {}", format!("0x{:x}", wallet_address));
+        println!("Address: 0x{:x}", wallet_address);
         Ok(())
     }
 
@@ -161,7 +161,7 @@ impl WalletCommand {
         Ok(())
     }
 
-    fn backup_wallet(&self, _config: &Config, name: &str, path: &PathBuf) -> Result<()> {
+    fn backup_wallet(&self, _config: &Config, name: &str, path: &Path) -> Result<()> {
         let wallet_file = constants::wallet_file_path();
         if !wallet_file.exists() {
             return Err(anyhow!("No wallets found"));

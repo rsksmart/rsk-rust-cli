@@ -236,7 +236,7 @@ impl ContactsCommand {
             .filter(|c| {
                 c.name.to_lowercase().contains(&query.to_lowercase())
                     || c.address.to_string().contains(query)
-                    || c.notes.as_ref().map_or(false, |n| n.contains(query))
+                    || c.notes.as_ref().is_some_and(|n| n.contains(query))
                     || c.tags.iter().any(|t| t.contains(query))
             })
             .collect();

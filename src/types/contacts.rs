@@ -74,7 +74,7 @@ impl Contact {
             .filter(|tx| {
                 tx.from == self.address
                     || tx.to == Some(self.address)
-                    || tx.to.as_ref().map_or(false, |to| *to == self.address)
+                    || tx.to.as_ref().is_some_and(|to| *to == self.address)
             })
             .collect()
     }
@@ -130,7 +130,7 @@ impl Contact {
             .filter(|tx| {
                 tx.from == self.address
                     || tx.to == Some(self.address)
-                    || tx.to.as_ref().map_or(false, |to| *to == self.address)
+                    || tx.to.as_ref().is_some_and(|to| *to == self.address)
             })
             .collect();
 
@@ -193,7 +193,7 @@ impl Contact {
         if self.address == Address::zero() {
             return Err(anyhow::anyhow!("Contact address cannot be zero"));
         }
-        if self.notes.as_ref().map_or(false, |n| n.is_empty()) {
+        if self.notes.as_ref().is_some_and(|n| n.is_empty()) {
             return Err(anyhow::anyhow!("Notes cannot be empty if provided"));
         }
         if self.tags.iter().any(|tag| tag.is_empty()) {
@@ -210,15 +210,13 @@ impl Contact {
         if self.created_at.timestamp() < 0 {
             return Err(anyhow::anyhow!("Created at timestamp cannot be negative"));
         }
-        if let Some(stats) = &self.transaction_stats {
-            if let Some(last_tx) = stats.last_transaction {
-                if last_tx.timestamp() > chrono::Local::now().timestamp() {
+        if let Some(stats) = &self.transaction_stats
+            && let Some(last_tx) = stats.last_transaction
+                && last_tx.timestamp() > chrono::Local::now().timestamp() {
                     return Err(anyhow::anyhow!(
                         "Last transaction timestamp cannot be in the future"
                     ));
                 }
-            }
-        }
 
         if self.created_at.timestamp() < 1_000_000_000 {
             return Err(anyhow::anyhow!("Created at timestamp is too old"));
