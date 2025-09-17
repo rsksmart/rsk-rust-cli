@@ -51,7 +51,7 @@ dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 console = "0.15"
 clearscreen = "2.0.0"
 tabled = { version = "0.11", features = ["derive"] }
-rustyline = { version = "11.0", features = ["with-file-history"] }
+rustyline = { version = "17.0", features = ["with-file-history"] }
 inquire = "0.7.5"
 async-trait = "0.1.88"
 csv = "1.3.1"
