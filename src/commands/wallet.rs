@@ -6,7 +6,7 @@ use colored::Colorize;
 use ethers::signers::LocalWallet;
 use rand::thread_rng;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 #[derive(Parser, Debug)]
