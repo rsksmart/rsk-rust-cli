@@ -152,7 +152,7 @@ async fn list_tokens() -> Result<()> {
             if tokens.is_empty() {
                 println!("\nNo tokens found");
             } else {
-                println!("\n{:<15} {:<42} {}", "SYMBOL", "ADDRESS", "DECIMALS");
+                println!("\n{:<15} {:<42} DECIMALS", "SYMBOL", "ADDRESS");
                 println!("{}", "-".repeat(70));
 
                 for (symbol, info) in tokens {

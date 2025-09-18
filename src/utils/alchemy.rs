@@ -1,21 +1,27 @@
 // src/utils/alchemy.rs
 use anyhow::{Result, anyhow};
 use serde_json::Value;
+use reqwest::Client;
 
 pub struct AlchemyClient {
-    client: reqwest::Client,
+    client: Client,
     api_key: String,
     is_testnet: bool,
 }
 
 impl AlchemyClient {
     pub fn new(api_key: String, is_testnet: bool) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            api_key,
-            is_testnet,
-        }
+    let client = Client::builder()
+        .https_only(true) // Restrict to HTTPS
+        .use_rustls_tls() // Use rustls for TLS (more secure, avoids system-specific issues)
+        .build()
+        .expect("Failed to build reqwest client");
+    Self {
+        client,
+        api_key,
+        is_testnet,
     }
+}
 
     pub fn get_base_url(&self) -> String {
         let network = if self.is_testnet {
@@ -23,10 +29,7 @@ impl AlchemyClient {
         } else {
             "mainnet"
         };
-        format!(
-            "https://rootstock-{}.g.alchemy.com/v2/{}",
-            network, self.api_key
-        )
+        format!("https://rootstock-{}.g.alchemy.com/v2", network)
     }
 
     pub async fn get_asset_transfers(
@@ -51,6 +54,7 @@ impl AlchemyClient {
         let response = self
             .client
             .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -58,9 +62,11 @@ impl AlchemyClient {
                 "params": params
             }))
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow!("Request failed: {}", e))?
             .json::<Value>()
-            .await?;
+            .await
+            .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
 
         if let Some(error) = response.get("error") {
             return Err(anyhow!("Alchemy API error: {}", error));
@@ -76,6 +82,7 @@ impl AlchemyClient {
         let response = self
             .client
             .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -83,7 +90,8 @@ impl AlchemyClient {
                 "params": [block_number_hex, false]  // false to get transaction hashes only
             }))
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow!("Request failed: {}", e))?
             .json::<Value>()
             .await?;
 

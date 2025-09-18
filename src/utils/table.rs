@@ -5,6 +5,12 @@ pub struct TableBuilder {
     table: Table,
 }
 
+impl Default for TableBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TableBuilder {
     pub fn new() -> Self {
         Self {

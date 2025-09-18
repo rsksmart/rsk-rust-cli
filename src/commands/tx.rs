@@ -47,18 +47,18 @@ impl TxCommand {
         };
 
         let base_url = if self.testnet {
-            "https://rootstock-testnet.g.alchemy.com/v2/"
+            "https://rootstock-testnet.g.alchemy.com/v2"
         } else {
-            "https://rootstock-mainnet.g.alchemy.com/v2/"
+            "https://rootstock-mainnet.g.alchemy.com/v2"
         };
 
-        let url = format!("{}{}", base_url, api_key);
+        let url = base_url.to_string();
 
         // Get receipt first as it contains the status
-        let receipt = self.get_transaction_receipt(&client, &url, &self.tx_hash).await?;
+        let receipt = self.get_transaction_receipt(&client, &url, &api_key, &self.tx_hash).await?;
         
         // Get transaction details for additional info
-        let tx_details = self.get_transaction_details(&client, &url, &self.tx_hash).await?;
+        let tx_details = self.get_transaction_details(&client, &url, &api_key, &self.tx_hash).await?;
         
         // Display the information
         self.display_transaction_info(&tx_details, &receipt)?;
@@ -70,6 +70,7 @@ impl TxCommand {
         &self,
         client: &reqwest::Client,
         url: &str,
+        api_key: &str,
         tx_hash: &str,
     ) -> anyhow::Result<Value> {
         let params = serde_json::json!([tx_hash]);
@@ -82,11 +83,14 @@ impl TxCommand {
 
         let response = client
             .post(url)
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&request)
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow::anyhow!("Request failed: {}", e))?
             .json::<Value>()
-            .await?;
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse response: {}", e))?;
 
         if let Some(error) = response.get("error") {
             anyhow::bail!("Alchemy API error: {}", error);
@@ -103,6 +107,7 @@ impl TxCommand {
         &self,
         client: &reqwest::Client,
         url: &str,
+        api_key: &str,
         tx_hash: &str,
     ) -> anyhow::Result<Value> {
         let params = serde_json::json!([tx_hash]);
@@ -115,11 +120,14 @@ impl TxCommand {
 
         let response = client
             .post(url)
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&request)
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow::anyhow!("Request failed: {}", e))?
             .json::<Value>()
-            .await?;
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse response: {}", e))?;
 
         if let Some(error) = response.get("error") {
             anyhow::bail!("Alchemy API error: {}", error);
@@ -207,17 +215,16 @@ impl TxCommand {
         println!("\n{}", style(format!("  Status: {}", status)).dim());
         
         // If there's a contract address, show it
-        if let Some(contract_addr) = receipt["contractAddress"].as_str() {
-            if !contract_addr.is_empty() {
+        if let Some(contract_addr) = receipt["contractAddress"].as_str()
+            && !contract_addr.is_empty() {
                 println!("\n{}", style("Contract Creation").bold().underlined());
                 println!("{}", "-".repeat(60));
                 println!("{}", style(format!("  Contract: {}", contract_addr)).dim());
             }
-        }
 
         // Show logs if any
-        if let Some(logs) = receipt["logs"].as_array() {
-            if !logs.is_empty() {
+        if let Some(logs) = receipt["logs"].as_array()
+            && !logs.is_empty() {
                 println!("\n{}", style(format!("  Logs ({}):", logs.len())).bold().underlined());
                 for log in logs {
                     if let Some(topic) = log["topics"].as_array().and_then(|t| t[0].as_str()) {
@@ -225,7 +232,6 @@ impl TxCommand {
                     }
                 }
             }
-        }
 
         // Add explorer URL
         let explorer_url = if self.testnet {

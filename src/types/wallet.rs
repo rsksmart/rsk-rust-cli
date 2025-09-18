@@ -71,7 +71,7 @@ impl Wallet {
         let mut buffer = private_key.to_vec();
         let pos = buffer.len();
         let pad_len = 16 - (pos % 16);
-        buffer.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+        buffer.extend(std::iter::repeat_n(pad_len as u8, pad_len));
         let encryptor = Encryptor::<Aes256>::new(&key.into(), &iv.into());
         let _ = encryptor.encrypt_padded_mut::<Pkcs7>(&mut buffer, pos);
         Ok((buffer, iv.to_vec(), salt.to_vec()))
@@ -142,6 +142,12 @@ impl fmt::Display for Wallet {
             "Name: {}\nAddress: {}\nNetwork: {}",
             self.name, self.address, self.network
         )
+    }
+}
+
+impl Default for WalletData {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -254,7 +260,7 @@ impl WalletData {
             .filter(|c| {
                 c.name.to_lowercase().contains(&query.to_lowercase())
                     || c.address.to_string().contains(query)
-                    || c.notes.as_ref().map_or(false, |n| n.contains(query))
+                    || c.notes.as_ref().is_some_and(|n| n.contains(query))
                     || c.tags.iter().any(|t| t.contains(query))
             })
             .collect()

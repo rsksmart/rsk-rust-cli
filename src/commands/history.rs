@@ -83,11 +83,10 @@ impl HistoryCommand {
         let mut stored_api_key: Option<String> = None;
         
         // If export is requested, ensure we have a filename
-        if let Some(filename) = &self.export_csv {
-            if !filename.ends_with(".csv") {
+        if let Some(filename) = &self.export_csv
+            && !filename.ends_with(".csv") {
                 return Err(anyhow::anyhow!("Export filename must end with .csv"));
             }
-        }
 
         // Try to load API key from wallet file
         if wallet_file.exists() {
@@ -201,7 +200,7 @@ impl HistoryCommand {
             let mut wtr = csv::Writer::from_path(filename)?;
             
             // Write header
-            wtr.write_record(&[
+            wtr.write_record([
                 "Transaction Hash",
                 "Timestamp",
                 "From",
