@@ -1,0 +1,51 @@
+name: "CodeQL Security Analysis"
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  schedule:
+    # Run CodeQL analysis weekly on Mondays at 2 AM UTC
+    - cron: '0 2 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze Rust Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      # Required for CodeQL to upload SARIF results
+      security-events: write
+      # Required to fetch private repositories
+      packages: read
+      # Required for actions/checkout
+      actions: read
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: rust
+        # Use default CodeQL query suite for Rust
+        # This includes security, quality, and maintainability queries
+
+    - name: Setup Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Build Rust project
+      run: |
+        echo 'Building Rust project for CodeQL analysis...'
+        cargo build --release
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:rust"
