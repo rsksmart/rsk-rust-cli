@@ -126,7 +126,7 @@ pub async fn start() -> Result<()> {
             7 => manage_contacts().await?,
             8 => show_config_menu().await?,
             9 => system_menu().await?,
-            11 => {
+            10 => {
                 println!("\n👋 Goodbye!");
                 break;
             }
