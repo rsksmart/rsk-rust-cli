@@ -36,19 +36,7 @@ impl AlchemyClient {
         } else {
             "mainnet"
         };
-        format!(
-            "https://rootstock-{}.g.alchemy.com/v2/{}",
-            network, self.api_key
-        )
-    }
-
-    fn get_redacted_url(&self) -> String {
-        let network = if self.is_testnet {
-            "testnet"
-        } else {
-            "mainnet"
-        };
-        format!("https://rootstock-{}.g.alchemy.com/v2/[REDACTED]", network)
+        format!("https://rootstock-{}.g.alchemy.com/v2", network)
     }
 
     pub async fn get_asset_transfers(
@@ -73,6 +61,7 @@ impl AlchemyClient {
         let response = self
             .client
             .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -81,10 +70,10 @@ impl AlchemyClient {
             }))
             .send()
             .await
-            .map_err(|e| anyhow!("Request to {} failed: {}", self.get_redacted_url(), e))?
+            .map_err(|e| anyhow!("Request failed: {}", e))?
             .json::<Value>()
             .await
-            .map_err(|e| anyhow!("Failed to parse response from {}: {}", self.get_redacted_url(), e))?;
+            .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
 
         if let Some(error) = response.get("error") {
             return Err(anyhow!("Alchemy API error: {}", error));
@@ -100,6 +89,7 @@ impl AlchemyClient {
         let response = self
             .client
             .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -108,7 +98,7 @@ impl AlchemyClient {
             }))
             .send()
             .await
-            .map_err(|e| anyhow!("Request to {} failed: {}", self.get_redacted_url(), e))?
+            .map_err(|e| anyhow!("Request failed: {}", e))?
             .json::<Value>()
             .await?;
 
