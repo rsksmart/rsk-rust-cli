@@ -20,8 +20,8 @@ fn get_network_status(network: &Network) -> String {
     }
 }
 
-/// Helper function to get API key status
-fn get_api_key_status(has_key: bool) -> String {
+/// Helper function to get configuration status
+fn get_config_status(has_key: bool) -> String {
     if has_key {
         style("✓ Configured").green().to_string()
     } else {
@@ -72,11 +72,11 @@ async fn show_system_info() -> Result<()> {
     match config.default_network {
         Network::Mainnet => {
             let has_key = config.alchemy_mainnet_key.as_ref().map_or(false, |k| !k.is_empty());
-            println!("• Service Configuration: {}", get_api_key_status(has_key));
+            println!("• Service Configuration: {}", get_config_status(has_key));
         }
         Network::Testnet => {
             let has_key = config.alchemy_testnet_key.as_ref().map_or(false, |k| !k.is_empty());
-            println!("• Service Configuration: {}", get_api_key_status(has_key));
+            println!("• Service Configuration: {}", get_config_status(has_key));
         }
         _ => {}
     }
