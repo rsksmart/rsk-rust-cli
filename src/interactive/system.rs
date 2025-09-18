@@ -68,15 +68,15 @@ async fn show_system_info() -> Result<()> {
     println!("• Version: {}", style(env!("CARGO_PKG_VERSION")).cyan());
     println!("• Network: {}", get_network_status(&config.default_network));
     
-    // Show API key status
+    // Show configuration status
     match config.default_network {
         Network::Mainnet => {
             let has_key = config.alchemy_mainnet_key.as_ref().map_or(false, |k| !k.is_empty());
-            println!("• API Configuration: {}", get_api_key_status(has_key));
+            println!("• Service Configuration: {}", get_api_key_status(has_key));
         }
         Network::Testnet => {
             let has_key = config.alchemy_testnet_key.as_ref().map_or(false, |k| !k.is_empty());
-            println!("• API Configuration: {}", get_api_key_status(has_key));
+            println!("• Service Configuration: {}", get_api_key_status(has_key));
         }
         _ => {}
     }
