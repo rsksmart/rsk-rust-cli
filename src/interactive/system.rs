@@ -71,12 +71,12 @@ async fn show_system_info() -> Result<()> {
     // Show API key status
     match config.default_network {
         Network::Mainnet => {
-            let has_key = config.alchemy_mainnet_key.as_ref().is_some_and(|k| !k.is_empty());
-            println!("• Alchemy API Key: {}", get_api_key_status(has_key));
+            let has_key = config.alchemy_mainnet_key.as_ref().map_or(false, |k| !k.is_empty());
+            println!("• API Configuration: {}", get_api_key_status(has_key));
         }
         Network::Testnet => {
-            let has_key = config.alchemy_testnet_key.as_ref().is_some_and(|k| !k.is_empty());
-            println!("• Alchemy API Key: {}", get_api_key_status(has_key));
+            let has_key = config.alchemy_testnet_key.as_ref().map_or(false, |k| !k.is_empty());
+            println!("• API Configuration: {}", get_api_key_status(has_key));
         }
         _ => {}
     }
