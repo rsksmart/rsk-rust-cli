@@ -42,6 +42,15 @@ impl AlchemyClient {
         )
     }
 
+    fn get_redacted_url(&self) -> String {
+        let network = if self.is_testnet {
+            "testnet"
+        } else {
+            "mainnet"
+        };
+        format!("https://rootstock-{}.g.alchemy.com/v2/[REDACTED]", network)
+    }
+
     pub async fn get_asset_transfers(
         &self,
         address: &str,
@@ -71,9 +80,11 @@ impl AlchemyClient {
                 "params": params
             }))
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow!("Request to {} failed: {}", self.get_redacted_url(), e))?
             .json::<Value>()
-            .await?;
+            .await
+            .map_err(|e| anyhow!("Failed to parse response from {}: {}", self.get_redacted_url(), e))?;
 
         if let Some(error) = response.get("error") {
             return Err(anyhow!("Alchemy API error: {}", error));
@@ -96,7 +107,8 @@ impl AlchemyClient {
                 "params": [block_number_hex, false]  // false to get transaction hashes only
             }))
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow!("Request to {} failed: {}", self.get_redacted_url(), e))?
             .json::<Value>()
             .await?;
 

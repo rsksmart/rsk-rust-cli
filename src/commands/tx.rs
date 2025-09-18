@@ -53,12 +53,13 @@ impl TxCommand {
         };
 
         let url = format!("{}{}", base_url, api_key);
+        let redacted_url = format!("{}[REDACTED]", base_url);
 
         // Get receipt first as it contains the status
-        let receipt = self.get_transaction_receipt(&client, &url, &self.tx_hash).await?;
+        let receipt = self.get_transaction_receipt(&client, &url, &redacted_url, &self.tx_hash).await?;
         
         // Get transaction details for additional info
-        let tx_details = self.get_transaction_details(&client, &url, &self.tx_hash).await?;
+        let tx_details = self.get_transaction_details(&client, &url, &redacted_url, &self.tx_hash).await?;
         
         // Display the information
         self.display_transaction_info(&tx_details, &receipt)?;
@@ -70,6 +71,7 @@ impl TxCommand {
         &self,
         client: &reqwest::Client,
         url: &str,
+        redacted_url: &str,
         tx_hash: &str,
     ) -> anyhow::Result<Value> {
         let params = serde_json::json!([tx_hash]);
@@ -84,9 +86,11 @@ impl TxCommand {
             .post(url)
             .json(&request)
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow::anyhow!("Request to {} failed: {}", redacted_url, e))?
             .json::<Value>()
-            .await?;
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse response from {}: {}", redacted_url, e))?;
 
         if let Some(error) = response.get("error") {
             anyhow::bail!("Alchemy API error: {}", error);
@@ -103,6 +107,7 @@ impl TxCommand {
         &self,
         client: &reqwest::Client,
         url: &str,
+        redacted_url: &str,
         tx_hash: &str,
     ) -> anyhow::Result<Value> {
         let params = serde_json::json!([tx_hash]);
@@ -117,9 +122,11 @@ impl TxCommand {
             .post(url)
             .json(&request)
             .send()
-            .await?
+            .await
+            .map_err(|e| anyhow::anyhow!("Request to {} failed: {}", redacted_url, e))?
             .json::<Value>()
-            .await?;
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse response from {}: {}", redacted_url, e))?;
 
         if let Some(error) = response.get("error") {
             anyhow::bail!("Alchemy API error: {}", error);
