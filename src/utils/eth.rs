@@ -2,27 +2,30 @@ use crate::types::wallet::WalletData;
 use crate::utils::constants;
 use crate::utils::helper::Config;
 use anyhow::anyhow;
-use ethers::types::{H256, U256};
-use ethers::{
-    contract::abigen, prelude::*, providers::Provider, signers::LocalWallet,
-    types::transaction::eip2718::TypedTransaction,
-};
+use alloy::primitives::{Address, B256, U256};
+use alloy::providers::{Provider, ProviderBuilder, RootProvider};
+use alloy::signers::local::PrivateKeySigner;
+use alloy::transports::http::{Client, Http};
+use alloy::network::TransactionBuilder;
+use alloy::sol;
 use std::fs;
 use std::sync::Arc;
 
-abigen!(
-    IERC20,
-    r#"[
-        function balanceOf(address account) external view returns (uint256)
-        function transfer(address recipient, uint256 amount) external returns (bool)
-        function decimals() external view returns (uint8)
-        function symbol() external view returns (string)
-    ]"#,
-);
+// Define ERC20 interface using alloy's sol! macro
+sol! {
+    #[allow(missing_docs)]
+    #[sol(rpc)]
+    contract IERC20 {
+        function balanceOf(address account) external view returns (uint256);
+        function transfer(address recipient, uint256 amount) external returns (bool);
+        function decimals() external view returns (uint8);
+        function symbol() external view returns (string);
+    }
+}
 
 pub struct EthClient {
-    provider: Arc<Provider<Http>>,
-    wallet: Option<LocalWallet>,
+    provider: Arc<RootProvider<Http<Client>>>,
+    wallet: Option<PrivateKeySigner>,
 }
 
 impl EthClient {
@@ -45,14 +48,14 @@ impl EthClient {
         };
 
         // Use the RPC URL from config (which defaults to public nodes)
-        let provider = Provider::<Http>::try_from(&config.network.rpc_url)
-            .map_err(|e| anyhow!("Failed to connect to RPC: {}", e))?;
+        let provider = ProviderBuilder::new()
+            .on_http(config.network.rpc_url.parse()?);
         let wallet = config
             .wallet
             .private_key
             .as_ref()
             .map(|key| {
-                key.parse::<LocalWallet>()
+                key.parse::<PrivateKeySigner>()
                     .map_err(|e| anyhow!("Invalid private key: {}", e))
             })
             .transpose()?;
@@ -69,16 +72,17 @@ impl EthClient {
     ) -> Result<U256, anyhow::Error> {
         match token_address {
             Some(token_addr) => {
-                let contract = IERC20::new(*token_addr, Arc::clone(&self.provider));
-                contract
-                    .balance_of(*address)
+                let contract = IERC20::new(*token_addr, &self.provider);
+                let balance = contract
+                    .balanceOf(*address)
                     .call()
                     .await
-                    .map_err(|e| anyhow!("Failed to get token balance: {}", e))
+                    .map_err(|e| anyhow!("Failed to get token balance: {}", e))?;
+                Ok(balance._0)
             }
             None => self
                 .provider
-                .get_balance(*address, None)
+                .get_balance(*address)
                 .await
                 .map_err(|e| anyhow!("Failed to get RBTC balance: {}", e)),
         }
@@ -89,14 +93,14 @@ impl EthClient {
         to: Address,
         amount: U256,
         token_address: Option<Address>,
-    ) -> Result<H256, anyhow::Error> {
+    ) -> Result<B256, anyhow::Error> {
         let wallet = self
             .wallet
             .as_ref()
             .ok_or_else(|| anyhow!("No wallet configured"))?;
         let nonce = self
             .provider
-            .get_transaction_count(wallet.address(), None)
+            .get_transaction_count(wallet.address())
             .await
             .map_err(|e| anyhow!("Failed to get nonce: {}", e))?;
         let gas_price = self
@@ -106,87 +110,83 @@ impl EthClient {
             .map_err(|e| anyhow!("Failed to get gas price: {}", e))?;
         let rbtc_balance = self
             .provider
-            .get_balance(wallet.address(), None)
+            .get_balance(wallet.address())
             .await
             .map_err(|e| anyhow!("Failed to get RBTC balance: {}", e))?;
-        let estimated_gas_cost = gas_price * U256::from(100_000);
+        let estimated_gas_cost = U256::from(gas_price) * U256::from(100_000);
         if rbtc_balance < estimated_gas_cost {
             return Err(anyhow!("Insufficient RBTC for gas fees"));
         }
-        let chain_id = self.provider.get_chainid().await?.as_u64();
+        let chain_id = self.provider.get_chain_id().await?;
 
         match token_address {
             Some(token_addr) => {
-                let contract = IERC20::new(token_addr, Arc::clone(&self.provider));
+                let contract = IERC20::new(token_addr, &self.provider);
                 let token_balance = contract
-                    .balance_of(wallet.address())
+                    .balanceOf(wallet.address())
                     .call()
                     .await
                     .map_err(|e| anyhow!("Failed to get token balance: {}", e))?;
-                if token_balance < amount {
+                if token_balance._0 < amount {
                     return Err(anyhow!("Insufficient token balance"));
                 }
-                let data = contract
-                    .transfer(to, amount)
-                    .calldata()
-                    .ok_or_else(|| anyhow!("Failed to encode transfer calldata"))?;
-                let mut tx = TypedTransaction::Legacy(TransactionRequest {
-                    to: Some(token_addr.into()),
-                    from: Some(wallet.address()),
-                    nonce: Some(nonce),
-                    gas_price: Some(gas_price),
-                    gas: None,
-                    value: Some(U256::zero()),
-                    data: Some(data),
-                    chain_id: Some(chain_id.into()),
-                    ..Default::default()
-                });
+                
+                use alloy::rpc::types::TransactionRequest;
+                let call_data = contract.transfer(to, amount).calldata().clone();
+                let tx = TransactionRequest::default()
+                    .with_to(token_addr)
+                    .with_from(wallet.address())
+                    .with_nonce(nonce)
+                    .with_gas_price(gas_price)
+                    .with_value(U256::ZERO)
+                    .with_input(call_data)
+                    .with_chain_id(chain_id);
+                
                 let gas_estimate = self
                     .provider
-                    .estimate_gas(&tx, None)
+                    .estimate_gas(&tx)
                     .await
                     .map_err(|e| anyhow!("Failed to estimate gas for token transfer: {}", e))?;
-                tx.set_gas(gas_estimate);
-                let signature = wallet
-                    .sign_transaction(&tx)
-                    .await
-                    .map_err(|e| anyhow!("Failed to sign transaction: {}", e))?;
-                let raw_tx = tx.rlp_signed(&signature);
+                
+                let tx = tx.with_gas_limit(gas_estimate);
+                
                 let pending_tx = self
                     .provider
-                    .send_raw_transaction(raw_tx)
+                    .send_transaction(tx)
                     .await
                     .map_err(|e| anyhow!("Failed to send token transaction: {}", e))?;
-                Ok(pending_tx.tx_hash())
+                let tx_hash = pending_tx.tx_hash();
+                Ok(*tx_hash)
             }
             None => {
                 if rbtc_balance < amount + estimated_gas_cost {
                     return Err(anyhow!("Insufficient RBTC for transfer and gas"));
                 }
-                let tx = TransactionRequest::new()
-                    .to(to)
-                    .value(amount)
-                    .from(wallet.address())
-                    .nonce(nonce)
-                    .gas_price(gas_price)
-                    .chain_id(chain_id);
+                
+                use alloy::rpc::types::TransactionRequest;
+                let tx = TransactionRequest::default()
+                    .with_to(to)
+                    .with_value(amount)
+                    .with_from(wallet.address())
+                    .with_nonce(nonce)
+                    .with_gas_price(gas_price)
+                    .with_chain_id(chain_id);
+                
                 let gas_estimate = self
                     .provider
-                    .estimate_gas(&tx.clone().into(), None)
+                    .estimate_gas(&tx)
                     .await
                     .map_err(|e| anyhow!("Failed to estimate gas for RBTC transfer: {}", e))?;
-                let typed_tx: TypedTransaction = tx.gas(gas_estimate).into();
-                let signature = wallet
-                    .sign_transaction(&typed_tx)
-                    .await
-                    .map_err(|e| anyhow!("Failed to sign transaction: {}", e))?;
-                let raw_tx = typed_tx.rlp_signed(&signature);
+                
+                let tx = tx.with_gas_limit(gas_estimate);
+                
                 let pending_tx = self
                     .provider
-                    .send_raw_transaction(raw_tx)
+                    .send_transaction(tx)
                     .await
                     .map_err(|e| anyhow!("Failed to send RBTC transaction: {}", e))?;
-                Ok(pending_tx.tx_hash())
+                let tx_hash = pending_tx.tx_hash();
+                Ok(*tx_hash)
             }
         }
     }
@@ -194,8 +194,8 @@ impl EthClient {
     /// Get transaction receipt by hash
     pub async fn get_transaction_receipt(
         &self,
-        tx_hash: H256,
-    ) -> Result<TransactionReceipt, anyhow::Error> {
+        tx_hash: B256,
+    ) -> Result<alloy::rpc::types::TransactionReceipt, anyhow::Error> {
         self.provider
             .get_transaction_receipt(tx_hash)
             .await
@@ -207,14 +207,14 @@ impl EthClient {
         &self,
         token_address: Address,
     ) -> Result<(u8, String), anyhow::Error> {
-        let contract = IERC20::new(token_address, Arc::clone(&self.provider));
-        let decimals = contract.decimals().call().await?;
-        let symbol = contract.symbol().call().await?;
+        let contract = IERC20::new(token_address, &self.provider);
+        let decimals = contract.decimals().call().await?._0;
+        let symbol = contract.symbol().call().await?._0;
         Ok((decimals, symbol))
     }
 
     /// Get a reference to the underlying provider
-    pub fn provider(&self) -> &Provider<Http> {
+    pub fn provider(&self) -> &RootProvider<Http<Client>> {
         &self.provider
     }
 
@@ -226,17 +226,22 @@ impl EthClient {
     ) -> Result<U256, anyhow::Error> {
         match token_address {
             Some(token_addr) => {
-                let contract = IERC20::new(token_addr, Arc::clone(&self.provider));
-                let tx = contract.transfer(to, amount);
-                tx.estimate_gas()
+                let contract = IERC20::new(token_addr, &self.provider);
+                let call = contract.transfer(to, amount);
+                call.estimate_gas()
                     .await
+                    .map(|gas| U256::from(gas))
                     .map_err(|e| anyhow!("Failed to estimate gas for token transfer: {}", e))
             }
             None => {
-                let tx = TransactionRequest::new().to(to).value(amount);
+                use alloy::rpc::types::TransactionRequest;
+                let tx = TransactionRequest::default()
+                    .with_to(to)
+                    .with_value(amount);
                 self.provider
-                    .estimate_gas(&tx.into(), None)
+                    .estimate_gas(&tx)
                     .await
+                    .map(U256::from)
                     .map_err(|e| anyhow!("Failed to estimate gas for RBTC transfer: {}", e))
             }
         }

@@ -6,8 +6,8 @@ use crate::utils::helper::Config as HelperConfig;
 use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::Colorize;
-use ethers::signers::LocalWallet;
-use ethers::types::{Address, H256, U64, U256};
+use alloy::primitives::{Address, B256, U64, U256};
+use alloy::signers::local::PrivateKeySigner;
 use rpassword::prompt_password;
 use std::fs;
 use std::str::FromStr;
@@ -15,7 +15,7 @@ use std::str::FromStr;
 /// Result of a transfer operation
 #[derive(Debug)]
 pub struct TransferResult {
-    pub tx_hash: H256,
+    pub tx_hash: B256,
     pub from: Address,
     pub to: Address,
     pub value: U256,
@@ -62,8 +62,8 @@ impl TransferCommand {
         // Prompt for password and decrypt private key
         let password = prompt_password("Enter password for the default wallet: ")?;
         let private_key = default_wallet.decrypt_private_key(&password)?;
-        let _local_wallet = LocalWallet::from_str(&private_key)
-            .map_err(|e| anyhow!("Failed to create LocalWallet: {}", e))?;
+        let _local_wallet = PrivateKeySigner::from_str(&private_key)
+            .map_err(|e| anyhow!("Failed to create PrivateKeySigner: {}", e))?;
 
         // Get the network from config
         let config = ConfigManager::new()?.load()?;
@@ -110,7 +110,7 @@ impl TransferCommand {
         // Parse amount (convert f64 to wei or token units)
         // Both RBTC and tokens use 18 decimals
         let decimals = 18;
-        let amount = ethers::utils::parse_units(self.value.to_string(), decimals)
+        let amount = alloy::primitives::utils::parse_units(&self.value.to_string(), decimals)
             .map_err(|e| anyhow!("Invalid amount: {}", e))?;
 
         // Send transaction
@@ -156,8 +156,8 @@ impl TransferCommand {
                         from: default_wallet.address(),
                         to,
                         value: amount.into(),
-                        gas_used: U256::zero(),
-                        gas_price: U256::zero(),
+                        gas_used: U256::ZERO,
+                        gas_price: U256::ZERO,
                         status: U64::from(0), // 0 indicates unknown/pending status
                         token_address,
                         token_symbol,
@@ -167,7 +167,7 @@ impl TransferCommand {
         };
 
         // If we got here, we have a receipt
-        let status = receipt.status.unwrap_or_else(|| U64::from(0));
+        let status = if receipt.status() { U64::from(1) } else { U64::from(0) };
         let status_str = if status == U64::from(1) {
             format!("{}", "✓ Success".green().bold())
         } else if status == U64::from(0) {
@@ -187,8 +187,8 @@ impl TransferCommand {
             from: default_wallet.address(),
             to,
             value: amount.into(),
-            gas_used: receipt.gas_used.unwrap_or_default(),
-            gas_price: receipt.effective_gas_price.unwrap_or_default(),
+            gas_used: U256::from(receipt.gas_used),
+            gas_price: U256::ZERO, // Gas price not available in receipt
             status,
             token_address,
             token_symbol,

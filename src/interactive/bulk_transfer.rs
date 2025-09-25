@@ -5,12 +5,11 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 use dialoguer::{Confirm, Input};
-use ethers::{
-    middleware::SignerMiddleware,
-    prelude::*,
-    providers::{Http, Provider},
-    signers::LocalWallet,
-    types::{Address, U256},
+use alloy::{
+    primitives::{Address, U256},
+    providers::{Provider, ProviderBuilder},
+    signers::local::PrivateKeySigner,
+    network::TransactionBuilder,
 };
 use serde::Deserialize;
 use std::{fs, sync::Arc};
@@ -69,19 +68,16 @@ pub async fn bulk_transfer() -> Result<()> {
     // Decrypt the private key
     let private_key = current_wallet.decrypt_private_key(&password)?;
 
-    // Create a wallet with the chain ID
+    // Create a wallet
     let wallet = private_key
-        .parse::<LocalWallet>()
-        .map_err(|e| anyhow!("Failed to parse private key: {}", e))?
-        .with_chain_id(chain_id as u64);
+        .parse::<PrivateKeySigner>()
+        .map_err(|e| anyhow!("Failed to parse private key: {}", e))?;
 
     // Create a provider with the network RPC URL
-    let provider = Provider::<Http>::try_from(&network_config.rpc_url)
-        .map_err(|e| anyhow!("Failed to connect to RPC: {}", e))?;
+    let provider = ProviderBuilder::new()
+        .on_http(network_config.rpc_url.parse()?);
 
-    // Create a signer middleware with the provider and wallet
-    let client = SignerMiddleware::new(provider, wallet);
-    let client = Arc::new(client);
+    let client = Arc::new(provider);
 
     // Ask if user wants to use a file or manual input
     let use_file = Confirm::new()
@@ -165,7 +161,7 @@ pub async fn bulk_transfer() -> Result<()> {
     // Show summary
     println!("\n📋 Transaction Summary:");
     println!("====================");
-    let total = transfers.iter().fold(U256::zero(), |acc, t| acc + t.value);
+    let total = transfers.iter().fold(U256::ZERO, |acc, t| acc + t.value);
 
     for (i, transfer) in transfers.iter().enumerate() {
         println!(
@@ -180,14 +176,14 @@ pub async fn bulk_transfer() -> Result<()> {
 
     // Get current gas price
     let gas_price = client.get_gas_price().await?;
-    println!("Current gas price: {} Gwei", format_gwei(gas_price));
+    println!("Current gas price: {} Gwei", format_gwei(U256::from(gas_price)));
 
     // Estimate gas cost (21,000 gas per basic transfer)
     let gas_per_tx = U256::from(21000u64);
     let total_gas = gas_per_tx
         .checked_mul(U256::from(transfers.len()))
         .unwrap_or_default();
-    let total_gas_cost = total_gas.checked_mul(gas_price).unwrap_or_default();
+    let total_gas_cost = total_gas.checked_mul(U256::from(gas_price)).unwrap_or_default();
 
     println!("Estimated gas cost: {} rBTC", format_eth(total_gas_cost));
     println!(
@@ -215,32 +211,36 @@ pub async fn bulk_transfer() -> Result<()> {
     for (i, transfer) in transfers.clone().into_iter().enumerate() {
         print!("Sending {}/{}... ", i + 1, transfers.clone().len());
 
-        let tx = ethers::types::TransactionRequest::new()
-            .to(transfer.to)
-            .value(transfer.value)
-            .gas(gas_per_tx)
-            .gas_price(gas_price);
+        use alloy::rpc::types::TransactionRequest;
+        let tx = TransactionRequest::default()
+            .with_to(transfer.to)
+            .with_value(transfer.value)
+            .with_gas_limit(gas_per_tx.try_into().unwrap_or(0u64))
+            .with_gas_price(gas_price.try_into().unwrap_or(0u128));
 
-        match client.send_transaction(tx, None).await {
-            Ok(pending_tx) => match pending_tx.await {
-                Ok(Some(receipt)) => {
-                    if receipt.status == Some(1.into()) {
-                        println!("✅ Success! Tx: {:?}", receipt.transaction_hash);
-                        successful += 1;
-                    } else {
-                        println!("❌ Failed! Tx: {:?}", receipt.transaction_hash);
+        match client.send_transaction(tx).await {
+            Ok(pending_tx) => {
+                let tx_hash = pending_tx.tx_hash();
+                match client.get_transaction_receipt(*tx_hash).await {
+                    Ok(Some(receipt)) => {
+                        if receipt.status() {
+                            println!("✅ Success! Tx: {:?}", receipt.transaction_hash);
+                            successful += 1;
+                        } else {
+                            println!("❌ Failed! Tx: {:?}", receipt.transaction_hash);
+                            failed += 1;
+                        }
+                    }
+                    Ok(None) => {
+                        println!("❌ Transaction was dropped from the mempool");
+                        failed += 1;
+                    }
+                    Err(e) => {
+                        println!("❌ Error: {}", e);
                         failed += 1;
                     }
                 }
-                Ok(None) => {
-                    println!("❌ Transaction was dropped from the mempool");
-                    failed += 1;
-                }
-                Err(e) => {
-                    println!("❌ Error: {}", e);
-                    failed += 1;
-                }
-            },
+            }
             Err(e) => {
                 println!("❌ Failed to send transaction: {}", e);
                 failed += 1;
@@ -269,7 +269,7 @@ fn parse_amount(amount: &str) -> Result<U256> {
             let whole = parts[0]
                 .parse::<u64>()
                 .map_err(|_| anyhow!("Invalid amount: {}", amount))?;
-            Ok(U256::from(whole) * U256::exp10(18))
+            Ok(U256::from(whole) * U256::from(10u128).pow(U256::from(18)))
         }
         2 => {
             // With decimal part
@@ -288,8 +288,8 @@ fn parse_amount(amount: &str) -> Result<U256> {
                 .map_err(|_| anyhow!("Invalid decimal part: {}", decimals))?;
             let decimal_places = decimals.len() as u32;
 
-            let value = U256::from(whole) * U256::exp10(18)
-                + U256::from(decimal_part) * U256::exp10(18 - decimal_places as usize);
+            let value = U256::from(whole) * U256::from(10u128).pow(U256::from(18))
+                + U256::from(decimal_part) * U256::from(10u128).pow(U256::from(18 - decimal_places as usize));
 
             Ok(value)
         }
@@ -316,3 +316,4 @@ fn format_gwei(wei: U256) -> String {
     let gwei = wei / U256::from(1_000_000_000u64);
     format!("{} Gwei", gwei)
 }
+

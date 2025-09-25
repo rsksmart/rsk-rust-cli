@@ -5,7 +5,7 @@ use crate::utils::helper::Helper;
 use crate::utils::table::TableBuilder;
 use anyhow::{Result, anyhow};
 use clap::Parser;
-use ethers::types::Address;
+use alloy::primitives::Address;
 use std::fs;
 use std::str::FromStr;
 
@@ -77,7 +77,7 @@ impl BalanceCommand {
         // Format the balance with appropriate decimals
         // All tokens including RBTC use 18 decimals
         let decimals = 18;
-        let balance_str = ethers::utils::format_units(balance, decimals)
+        let balance_str = alloy::primitives::utils::format_units(balance, decimals)
             .map_err(|e| anyhow!("Failed to format balance: {}", e))?;
 
         let mut table = TableBuilder::new();

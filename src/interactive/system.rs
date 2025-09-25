@@ -6,8 +6,8 @@ use crate::utils::terminal::{self, show_version};
 use anyhow::Result;
 use console::style;
 use dialoguer::{Select, theme::ColorfulTheme};
-use ethers::providers::Middleware;
-use ethers::types::U256;
+use alloy::primitives::U256;
+use alloy::providers::Provider;
 use std::io;
 use std::time::Duration;
 
@@ -36,11 +36,11 @@ async fn get_block_number(eth_client: &EthClient) -> Result<u64> {
         .get_block_number()
         .await
         .map_err(|_| anyhow::anyhow!("Failed to get block number"))?;
-    Ok(block_number.as_u64())
+    Ok(block_number)
 }
 
 /// Get current gas price from the network
-async fn get_gas_price(eth_client: &EthClient) -> Result<U256> {
+async fn get_gas_price(eth_client: &EthClient) -> Result<u128> {
     eth_client
         .provider()
         .get_gas_price()
@@ -111,7 +111,7 @@ async fn show_system_info() -> Result<()> {
             // Get gas price
             match get_gas_price(&eth_client).await {
                 Ok(gas_price) => {
-                    let gwei = gas_price.as_u64() as f64 / 1_000_000_000.0;
+                    let gwei = gas_price as f64 / 1_000_000_000.0;
                     println!(
                         "• Current Gas Price: {} Gwei",
                         style(format!("{:.2}", gwei)).yellow()

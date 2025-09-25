@@ -3,7 +3,7 @@ use crate::types::network::{Network, NetworkConfig};
 use crate::utils::eth::EthClient;
 use anyhow::Result;
 use colored::Colorize;
-use ethers::types::Address;
+use alloy::primitives::Address;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -95,7 +95,7 @@ impl Helper {
         if as_tokens {
             Ok(format!(
                 "{} RBTC",
-                ethers::utils::format_units(balance, 18)?
+                alloy::primitives::utils::format_units(balance, 18)?
             ))
         } else {
             Ok(format!("{} wei", balance))
