@@ -11,7 +11,7 @@ use chrono::Utc;
 use ethers::signers::{LocalWallet, Signer};
 use ethers::types::{Address, U256};
 use generic_array::GenericArray;
-use rand::RngCore;
+use rand::{RngCore, rngs::OsRng};
 use scrypt::{Params, scrypt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -62,9 +62,9 @@ impl Wallet {
         password: &str,
     ) -> anyhow::Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         let mut salt = [0u8; 16];
-        rand::thread_rng().fill_bytes(&mut salt);
+        OsRng.fill_bytes(&mut salt);
         let mut iv = [0u8; 16];
-        rand::thread_rng().fill_bytes(&mut iv);
+        OsRng.fill_bytes(&mut iv);
         let params = Params::recommended();
         let mut key = [0u8; 32];
         scrypt(password.as_bytes(), &salt, &params, &mut key)?;
