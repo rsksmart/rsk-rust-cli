@@ -1,8 +1,8 @@
+use crate::config::ConfigManager;
 use crate::types::wallet::WalletData;
 use crate::utils::constants;
 use crate::utils::eth::EthClient;
 use crate::utils::helper::Config as HelperConfig;
-use crate::config::ConfigManager;
 use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::Colorize;
@@ -39,7 +39,6 @@ pub struct TransferCommand {
     /// Token address (for ERC20 transfers)
     #[arg(long)]
     pub token: Option<String>,
-
 }
 
 impl TransferCommand {
@@ -68,7 +67,7 @@ impl TransferCommand {
 
         // Get the network from config
         let config = ConfigManager::new()?.load()?;
-        
+
         // Create a new helper config with the private key
         let client_config = HelperConfig {
             network: config.default_network.get_config(),
@@ -78,7 +77,7 @@ impl TransferCommand {
                 mnemonic: None,
             },
         };
-        
+
         let eth_client = EthClient::new(&client_config, None).await?;
 
         // Parse recipient address
@@ -94,13 +93,13 @@ impl TransferCommand {
                 // Parse token address
                 let addr = Address::from_str(token_addr)
                     .map_err(|_| anyhow!("Invalid token address: {}", token_addr))?;
-                
+
                 // Try to get token info, but don't fail if we can't
                 let symbol = match eth_client.get_token_info(addr).await {
                     Ok((_, sym)) => sym,
                     Err(_) => format!("Token (0x{})", &token_addr[2..10]),
                 };
-                
+
                 (Some(addr), Some(symbol))
             }
         } else {
@@ -127,8 +126,11 @@ impl TransferCommand {
             token_symbol.clone().unwrap_or("RBTC".to_string())
         );
 
-        println!("\n{}: Transaction submitted. Waiting for confirmation... (This may take a moment)", "Info".blue().bold());
-        
+        println!(
+            "\n{}: Transaction submitted. Waiting for confirmation... (This may take a moment)",
+            "Info".blue().bold()
+        );
+
         // Try to get receipt with retries
         let mut retries = 5;
         let receipt = loop {
@@ -139,9 +141,15 @@ impl TransferCommand {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 }
                 Err(_e) => {
-                    println!("\n{}: Could not get transaction receipt. The transaction has been submitted but is still pending.", "Warning".yellow().bold());
-                    println!("You can check the status later with: wallet tx --tx-hash 0x{:x}", tx_hash);
-                    
+                    println!(
+                        "\n{}: Could not get transaction receipt. The transaction has been submitted but is still pending.",
+                        "Warning".yellow().bold()
+                    );
+                    println!(
+                        "You can check the status later with: wallet tx --tx-hash 0x{:x}",
+                        tx_hash
+                    );
+
                     // Return with minimal receipt info since we couldn't get the full receipt
                     return Ok(TransferResult {
                         tx_hash,
@@ -168,7 +176,11 @@ impl TransferCommand {
             format!("{}", "⏳ Pending".yellow().bold())
         };
 
-        println!("\n{}: Transaction confirmed! Status: {}", "Success".green().bold(), status_str);
+        println!(
+            "\n{}: Transaction confirmed! Status: {}",
+            "Success".green().bold(),
+            status_str
+        );
 
         Ok(TransferResult {
             tx_hash,

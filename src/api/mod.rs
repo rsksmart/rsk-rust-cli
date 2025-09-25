@@ -26,14 +26,14 @@ impl fmt::Display for ApiProvider {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKey {
     pub key: String,
-    pub network: String,  // "mainnet", "testnet", etc.
+    pub network: String, // "mainnet", "testnet", etc.
     pub provider: ApiProvider,
     pub name: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ApiManager {
-    keys: HashMap<String, ApiKey>,  // keyed by a unique identifier
+    keys: HashMap<String, ApiKey>, // keyed by a unique identifier
 }
 
 impl ApiManager {

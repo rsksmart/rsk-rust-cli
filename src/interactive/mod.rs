@@ -12,24 +12,17 @@ mod transfer_preview;
 mod tx;
 mod wallet;
 
+use crate::utils::constants;
 use anyhow::Result;
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Select};
-use crate::utils::constants;
+use dialoguer::{Select, theme::ColorfulTheme};
 
 // Re-export public functions
 pub use self::{
-    balance::show_balance,
-    bulk_transfer::bulk_transfer,
-    config::show_config_menu,
-    contacts::manage_contacts,
-    history::show_history,
-    wallet::create_wallet_with_name,
-    tokens::token_menu,
-    transfer::send_funds,
-    tx::check_transaction_status,
+    balance::show_balance, bulk_transfer::bulk_transfer, config::show_config_menu,
+    contacts::manage_contacts, history::show_history, system::system_menu, tokens::token_menu,
+    transfer::send_funds, tx::check_transaction_status, wallet::create_wallet_with_name,
     wallet::wallet_menu,
-    system::system_menu,
 };
 
 // Import for network status display
@@ -58,19 +51,25 @@ fn get_network_status(network: Network) -> console::StyledObject<&'static str> {
 pub async fn start() -> Result<()> {
     // Clear the screen for a fresh start
     clearscreen::clear().ok();
-    
+
     // Display welcome banner
-    println!("\n{}", style("🌐 Rootstock Wallet").bold().blue().underlined());
-    println!("{}", style("Your Gateway to the Rootstock Blockchain").dim());
+    println!(
+        "\n{}",
+        style("🌐 Rootstock Wallet").bold().blue().underlined()
+    );
+    println!(
+        "{}",
+        style("Your Gateway to the Rootstock Blockchain").dim()
+    );
     println!("{}\n", "-".repeat(40));
-    
+
     // Display current status
     let config_manager = ConfigManager::new()?;
     let config = config_manager.load()?;
-    
+
     println!("  {}", style("🟢 Online").green());
     println!("  {}", get_network_status(config.default_network));
-    
+
     // Check if wallet data file exists and count wallets
     let wallet_file = constants::wallet_file_path();
     let wallet_count = if wallet_file.exists() {
@@ -86,7 +85,7 @@ pub async fn start() -> Result<()> {
     } else {
         0
     };
-    
+
     let wallet_text = match wallet_count {
         0 => "💼 No wallets loaded".to_string(),
         1 => "💼 1 wallet loaded".to_string(),

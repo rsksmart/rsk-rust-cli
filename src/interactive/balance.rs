@@ -37,7 +37,7 @@ pub async fn show_balance() -> Result<()> {
             },
         ),
     );
-    
+
     if tokens.is_empty() {
         return Err(anyhow!("No tokens found for {} network", network));
     }
@@ -47,29 +47,27 @@ pub async fn show_balance() -> Result<()> {
         .into_iter()
         .filter(|(_, info)| {
             // Only include tokens that match the current network or are RBTC
-            info.address == "0x0000000000000000000000000000000000000000" || 
-            registry.list_tokens(Some(&network))
-                .iter()
-                .any(|(_, token_info)| token_info.address == info.address)
+            info.address == "0x0000000000000000000000000000000000000000"
+                || registry
+                    .list_tokens(Some(&network))
+                    .iter()
+                    .any(|(_, token_info)| token_info.address == info.address)
         })
         .collect();
 
     // Get just the display names for the selection menu
-    let token_display_names: Vec<String> = token_choices
-        .iter()
-        .map(|(name, _)| name.clone())
-        .collect();
+    let token_display_names: Vec<String> =
+        token_choices.iter().map(|(name, _)| name.clone()).collect();
 
     // Let the user select which token to check
-    let selection = Select::new("Select token to check balance:", token_display_names)
-        .prompt()?;
+    let selection = Select::new("Select token to check balance:", token_display_names).prompt()?;
 
     // Find the selected token info
     let (_, token_info) = token_choices
         .into_iter()
         .find(|(name, _)| name == &selection)
         .ok_or_else(|| anyhow!("Selected token not found"))?;
-        
+
     // Clone the address since we need to use it in the command
     let token_address = token_info.address; // This is a String which is Clone
 

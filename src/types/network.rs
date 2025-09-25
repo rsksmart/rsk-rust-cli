@@ -37,19 +37,15 @@ impl fmt::Display for Network {
 impl Network {
     pub fn get_config(&self) -> NetworkConfig {
         match self {
-            Network::Mainnet => {
-                NetworkConfig {
-                    name: "RSK Mainnet".to_string(),
-                    rpc_url: "https://public-node.rsk.co".to_string(),
-                    explorer_url: "https://explorer.rsk.co".to_string(),
-                }
+            Network::Mainnet => NetworkConfig {
+                name: "RSK Mainnet".to_string(),
+                rpc_url: "https://public-node.rsk.co".to_string(),
+                explorer_url: "https://explorer.rsk.co".to_string(),
             },
-            Network::Testnet => {
-                NetworkConfig {
-                    name: "RSK Testnet".to_string(),
-                    rpc_url: "https://public-node.testnet.rsk.co".to_string(),
-                    explorer_url: "https://explorer.testnet.rsk.co".to_string(),
-                }
+            Network::Testnet => NetworkConfig {
+                name: "RSK Testnet".to_string(),
+                rpc_url: "https://public-node.testnet.rsk.co".to_string(),
+                explorer_url: "https://explorer.testnet.rsk.co".to_string(),
             },
             Network::Regtest => NetworkConfig {
                 name: "RSK Regtest".to_string(),
@@ -57,39 +53,35 @@ impl Network {
                 explorer_url: "".to_string(),
             },
             // Legacy network types - use public nodes by default
-            Network::AlchemyMainnet => {
-                NetworkConfig {
-                    name: "RSK Mainnet".to_string(),
-                    rpc_url: "https://public-node.rsk.co".to_string(),
-                    explorer_url: "https://explorer.rsk.co".to_string(),
-                }
+            Network::AlchemyMainnet => NetworkConfig {
+                name: "RSK Mainnet".to_string(),
+                rpc_url: "https://public-node.rsk.co".to_string(),
+                explorer_url: "https://explorer.rsk.co".to_string(),
             },
-            Network::AlchemyTestnet => {
-                NetworkConfig {
-                    name: "RSK Testnet".to_string(),
-                    rpc_url: "https://public-node.testnet.rsk.co".to_string(),
-                    explorer_url: "https://explorer.testnet.rsk.co".to_string(),
-                }
+            Network::AlchemyTestnet => NetworkConfig {
+                name: "RSK Testnet".to_string(),
+                rpc_url: "https://public-node.testnet.rsk.co".to_string(),
+                explorer_url: "https://explorer.testnet.rsk.co".to_string(),
             },
-            Network::RootStockMainnet => {
-                NetworkConfig {
-                    name: "RSK Mainnet".to_string(),
-                    rpc_url: "https://public-node.rsk.co".to_string(),
-                    explorer_url: "https://explorer.rsk.co".to_string(),
-                }
+            Network::RootStockMainnet => NetworkConfig {
+                name: "RSK Mainnet".to_string(),
+                rpc_url: "https://public-node.rsk.co".to_string(),
+                explorer_url: "https://explorer.rsk.co".to_string(),
             },
-            Network::RootStockTestnet => {
-                NetworkConfig {
-                    name: "RSK Testnet".to_string(),
-                    rpc_url: "https://public-node.testnet.rsk.co".to_string(),
-                    explorer_url: "https://explorer.testnet.rsk.co".to_string(),
-                }
+            Network::RootStockTestnet => NetworkConfig {
+                name: "RSK Testnet".to_string(),
+                rpc_url: "https://public-node.testnet.rsk.co".to_string(),
+                explorer_url: "https://explorer.testnet.rsk.co".to_string(),
             },
         }
     }
-    
+
     /// Get RPC URL with API key preference: RSK RPC > Alchemy > Public nodes
-    pub fn get_rpc_url_with_key(&self, rsk_api_key: Option<&str>, alchemy_api_key: Option<&str>) -> String {
+    pub fn get_rpc_url_with_key(
+        &self,
+        rsk_api_key: Option<&str>,
+        alchemy_api_key: Option<&str>,
+    ) -> String {
         match self {
             Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => {
                 // Prefer RSK RPC API if available
@@ -104,7 +96,7 @@ impl Network {
                 else {
                     "https://public-node.rsk.co".to_string()
                 }
-            },
+            }
             Network::Testnet | Network::AlchemyTestnet | Network::RootStockTestnet => {
                 // Prefer RSK RPC API if available
                 if let Some(key) = rsk_api_key {
@@ -118,11 +110,11 @@ impl Network {
                 else {
                     "https://public-node.testnet.rsk.co".to_string()
                 }
-            },
+            }
             Network::Regtest => "http://localhost:4444".to_string(),
         }
     }
-    
+
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "mainnet" => Some(Network::Mainnet),

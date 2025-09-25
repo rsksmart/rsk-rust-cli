@@ -1,3 +1,4 @@
+use crate::config::ConfigManager;
 use crate::types::wallet::WalletData;
 use crate::utils::constants;
 use crate::utils::helper::Helper;
@@ -7,7 +8,6 @@ use clap::Parser;
 use ethers::types::Address;
 use std::fs;
 use std::str::FromStr;
-use crate::config::ConfigManager;
 
 #[derive(Parser, Debug)]
 pub struct BalanceCommand {
@@ -25,7 +25,7 @@ impl BalanceCommand {
         // Load config to get the current network
         let config = ConfigManager::new()?.load()?;
         let network = config.default_network.to_string().to_lowercase();
-        
+
         let (_config, eth_client) = Helper::init_eth_client(&network).await?;
 
         // Get address - use default wallet if none provided
@@ -56,14 +56,16 @@ impl BalanceCommand {
             } else {
                 let token_address = Address::from_str(token)
                     .map_err(|_| anyhow!("Invalid token address format: {}", token))?;
-                let balance = eth_client.get_balance(&address, &Some(token_address)).await?;
-                
+                let balance = eth_client
+                    .get_balance(&address, &Some(token_address))
+                    .await?;
+
                 // Try to get token info, but don't fail if we can't
                 let token_name = match eth_client.get_token_info(token_address).await {
                     Ok((_, symbol)) => symbol,
                     Err(_) => format!("Token (0x{})", &token[2..10]),
                 };
-                
+
                 (balance, token_name)
             }
         } else {

@@ -64,10 +64,16 @@ async fn create_wallet() -> Result<()> {
 pub async fn create_wallet_with_name(name: &str) -> Result<()> {
     println!("\n{}", style("🔐 Create New Wallet").bold().blue());
     println!("{}", "-".repeat(30));
-    
-    println!("\n{}", style("Please set a strong password to secure your wallet.").dim());
-    println!("{}", style("This password will be required to access your wallet.").dim());
-    
+
+    println!(
+        "\n{}",
+        style("Please set a strong password to secure your wallet.").dim()
+    );
+    println!(
+        "{}",
+        style("This password will be required to access your wallet.").dim()
+    );
+
     let password = inquire::Password::new("Enter password:")
         .with_display_toggle_enabled()
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
@@ -76,12 +82,15 @@ pub async fn create_wallet_with_name(name: &str) -> Result<()> {
         .with_formatter(&|_| String::from("✓ Password set"))
         .prompt()?;
 
-    println!("\n{}", style("⏳ Creating your wallet. This may take a few seconds...").dim());
-    
+    println!(
+        "\n{}",
+        style("⏳ Creating your wallet. This may take a few seconds...").dim()
+    );
+
     let cmd = WalletCommand {
-        action: WalletAction::Create { 
+        action: WalletAction::Create {
             name: name.to_string(),
-            password: password.clone()
+            password: password.clone(),
         },
     };
 
@@ -92,10 +101,16 @@ pub async fn create_wallet_with_name(name: &str) -> Result<()> {
 async fn import_wallet() -> Result<()> {
     println!("\n{}", style("📤 Import Wallet").bold().blue());
     println!("{}", "-".repeat(30));
-    
-    println!("\n{}", style("Please enter the private key of the wallet you want to import.").dim());
-    println!("{}", style("This should start with '0x' followed by 64 hexadecimal characters.").dim());
-    
+
+    println!(
+        "\n{}",
+        style("Please enter the private key of the wallet you want to import.").dim()
+    );
+    println!(
+        "{}",
+        style("This should start with '0x' followed by 64 hexadecimal characters.").dim()
+    );
+
     let private_key = inquire::Password::new("Private key (0x...):")
         .with_display_mode(inquire::PasswordDisplayMode::Hidden)
         .with_help_message("The private key of the wallet to import")
@@ -104,10 +119,16 @@ async fn import_wallet() -> Result<()> {
     let name = inquire::Text::new("Wallet name:")
         .with_help_message("A name to identify this wallet in the app")
         .prompt()?;
-        
-    println!("\n{}", style("Please set a strong password to secure your imported wallet.").dim());
-    println!("{}", style("This password will be required to access your wallet.").dim());
-    
+
+    println!(
+        "\n{}",
+        style("Please set a strong password to secure your imported wallet.").dim()
+    );
+    println!(
+        "{}",
+        style("This password will be required to access your wallet.").dim()
+    );
+
     let password = inquire::Password::new("Enter password:")
         .with_display_toggle_enabled()
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
@@ -116,7 +137,10 @@ async fn import_wallet() -> Result<()> {
         .with_formatter(&|_| String::from("✓ Password set"))
         .prompt()?;
 
-    println!("\n{}", style("⏳ Importing your wallet. This may take a few seconds...").dim());
+    println!(
+        "\n{}",
+        style("⏳ Importing your wallet. This may take a few seconds...").dim()
+    );
 
     let cmd = WalletCommand {
         action: WalletAction::Import {

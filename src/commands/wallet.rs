@@ -17,22 +17,46 @@ pub struct WalletCommand {
 
 #[derive(Parser, Debug)]
 pub enum WalletAction {
-    Create { name: String, password: String },
-    Import { private_key: String, name: String, password: String },
+    Create {
+        name: String,
+        password: String,
+    },
+    Import {
+        private_key: String,
+        name: String,
+        password: String,
+    },
     List,
-    Switch { name: String },
-    Rename { old_name: String, new_name: String },
-    Backup { name: String, path: PathBuf },
-    Delete { name: String },
+    Switch {
+        name: String,
+    },
+    Rename {
+        old_name: String,
+        new_name: String,
+    },
+    Backup {
+        name: String,
+        path: PathBuf,
+    },
+    Delete {
+        name: String,
+    },
 }
 
 impl WalletCommand {
     pub async fn execute(&self) -> Result<()> {
         let config = Config::default(); // Use default config
         match &self.action {
-            WalletAction::Create { name, password } => self.create_wallet(&config, name, password).await?,
-            WalletAction::Import { private_key, name, password } => {
-                self.import_wallet(&config, private_key, name, password).await?
+            WalletAction::Create { name, password } => {
+                self.create_wallet(&config, name, password).await?
+            }
+            WalletAction::Import {
+                private_key,
+                name,
+                password,
+            } => {
+                self.import_wallet(&config, private_key, name, password)
+                    .await?
             }
             WalletAction::List => self.list_wallets(&config)?,
             WalletAction::Switch { name } => self.switch_wallet(name)?,
@@ -70,7 +94,13 @@ impl WalletCommand {
         Ok(())
     }
 
-    async fn import_wallet(&self, _config: &Config, private_key: &str, name: &str, password: &str) -> Result<()> {
+    async fn import_wallet(
+        &self,
+        _config: &Config,
+        private_key: &str,
+        name: &str,
+        password: &str,
+    ) -> Result<()> {
         let wallet = LocalWallet::from_str(private_key)?;
         let wallet = Wallet::new(wallet, name, password)?;
         let wallet_file = constants::wallet_file_path();
