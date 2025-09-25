@@ -1,5 +1,5 @@
 use thiserror::Error;
-use ethers::prelude::ProviderError;
+use alloy::transports::RpcError;
 use std::fmt;
 
 #[derive(Error, Debug)]
@@ -23,7 +23,7 @@ pub enum RskCliError {
     InvalidPrivateKey,
 
     #[error("RPC connection error: {0}")]
-    RpcError(#[from] ProviderError),
+    RpcError(#[from] RpcError<alloy::transports::TransportError>),
 
     #[error("Invalid network configuration")]
     InvalidNetworkConfig,

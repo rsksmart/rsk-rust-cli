@@ -70,7 +70,7 @@ pub async fn list_contacts() -> Result<()> {
                 "{} txs\n{} RBTC",
                 contact.get_total_transactions(),
                 // Format balance in RBTC (18 decimals)
-                ethers::utils::format_units(contact.get_total_volume(), 18)
+                alloy::primitives::utils::format_units(contact.get_total_volume(), 18)
                     .unwrap_or_else(|_| "N/A".to_string())
             )
         } else {

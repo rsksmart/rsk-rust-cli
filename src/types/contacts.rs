@@ -1,7 +1,7 @@
 use crate::types::transaction::RskTransaction;
 use anyhow::Result;
 use colored::Colorize;
-use ethers::types::{Address, H256, U256};
+use alloy::primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -22,7 +22,7 @@ pub struct Contact {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_stats: Option<ContactTransactionStats>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub recent_transactions: Vec<H256>, // Transaction hashes
+    pub recent_transactions: Vec<B256>, // Transaction hashes
 }
 
 impl Contact {
@@ -35,7 +35,7 @@ impl Contact {
             created_at: chrono::Local::now(),
             transaction_stats: Some(ContactTransactionStats {
                 total_transactions: 0,
-                total_volume: U256::zero(),
+                total_volume: U256::ZERO,
                 last_transaction: None,
             }),
             recent_transactions: Vec::new(),
@@ -47,7 +47,7 @@ impl Contact {
         if self.transaction_stats.is_none() {
             self.transaction_stats = Some(ContactTransactionStats {
                 total_transactions: 0,
-                total_volume: U256::zero(),
+                total_volume: U256::ZERO,
                 last_transaction: None,
             });
         }
@@ -83,7 +83,7 @@ impl Contact {
         self.transaction_stats
             .as_ref()
             .map(|s| s.total_volume)
-            .unwrap_or_else(U256::zero)
+            .unwrap_or(U256::ZERO)
     }
 
     pub fn get_total_transactions(&self) -> u64 {
@@ -157,8 +157,8 @@ impl Contact {
         other_address: Address,
         transactions: &[RskTransaction],
     ) -> (U256, U256) {
-        let mut sent = U256::zero();
-        let mut received = U256::zero();
+        let mut sent = U256::ZERO;
+        let mut received = U256::ZERO;
 
         for tx in transactions {
             if tx.from == self.address && tx.to == Some(other_address) {
@@ -190,7 +190,7 @@ impl Contact {
         if self.name.is_empty() {
             return Err(anyhow::anyhow!("Contact name cannot be empty"));
         }
-        if self.address == Address::zero() {
+        if self.address == Address::ZERO {
             return Err(anyhow::anyhow!("Contact address cannot be zero"));
         }
         if self.notes.as_ref().is_some_and(|n| n.is_empty()) {

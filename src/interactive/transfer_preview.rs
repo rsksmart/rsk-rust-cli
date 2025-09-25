@@ -9,13 +9,14 @@ use crate::{
 use anyhow::{Result, anyhow};
 use console::style;
 use dialoguer::Confirm;
-use ethers::providers::Middleware;
-use ethers::types::{Address, U256};
+use alloy::primitives::{Address, U256};
+use alloy::providers::Provider;
+use std::str::FromStr;
 
 /// Helper function to convert wei to RBTC
 fn convert_wei_to_rbtc(wei: U256) -> f64 {
     // 1 RBTC = 10^18 wei
-    let wei_f64 = wei.as_u128() as f64;
+    let wei_f64 = wei.to::<u128>() as f64;
     wei_f64 / 1_000_000_000_000_000_000.0
 }
 
@@ -26,7 +27,7 @@ pub async fn show_transaction_preview(to: &str, amount: &str, network: Network) 
 
     // Parse amount
     let amount_wei =
-        U256::from_dec_str(amount).map_err(|e| anyhow::anyhow!("Invalid amount format: {}", e))?;
+        U256::from_str(amount).map_err(|e| anyhow::anyhow!("Invalid amount format: {}", e))?;
 
     // Convert to RBTC for display
     let amount_rbtc = convert_wei_to_rbtc(amount_wei);
@@ -68,13 +69,13 @@ pub async fn show_transaction_preview(to: &str, amount: &str, network: Network) 
             to_address, amount_wei, None, // No token address for native transfers
         )
         .await?;
-    let gas_cost = gas_price.checked_mul(estimated_gas).unwrap_or_default();
+    let gas_cost = U256::from(gas_price).checked_mul(estimated_gas).unwrap_or_default();
     let gas_cost_rbtc = convert_wei_to_rbtc(gas_cost);
 
     println!("• Network: {}", style(network).cyan());
     println!(
         "• Gas Price: {} Gwei",
-        style(convert_wei_to_gwei(gas_price)).yellow()
+        style(convert_wei_to_gwei(U256::from(gas_price))).yellow()
     );
     println!("• Estimated Gas: {}", style(estimated_gas).yellow());
     println!("• Estimated Fee: {} RBTC", style(gas_cost_rbtc).red());
@@ -97,6 +98,6 @@ pub async fn show_transaction_preview(to: &str, amount: &str, network: Network) 
 
 /// Helper function to convert wei to Gwei
 fn convert_wei_to_gwei(wei: U256) -> f64 {
-    let gwei = wei.as_u128() as f64 / 1_000_000_000.0;
+    let gwei = wei.to::<u128>() as f64 / 1_000_000_000.0;
     (gwei * 100.0).round() / 100.0 // Round to 2 decimal places
 }

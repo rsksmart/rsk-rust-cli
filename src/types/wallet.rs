@@ -8,8 +8,8 @@ use cbc::cipher::block_padding::Pkcs7;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use cbc::{Decryptor, Encryptor};
 use chrono::Utc;
-use ethers::signers::{LocalWallet, Signer};
-use ethers::types::{Address, U256};
+use alloy::primitives::{Address, U256};
+use alloy::signers::{local::PrivateKeySigner, Signer};
 use generic_array::GenericArray;
 use rand::{RngCore, rngs::OsRng};
 use scrypt::{Params, scrypt};
@@ -42,12 +42,12 @@ impl Wallet {
         self.address
     }
 
-    pub fn new(wallet: LocalWallet, name: &str, password: &str) -> Result<Self, Error> {
+    pub fn new(wallet: PrivateKeySigner, name: &str, password: &str) -> Result<Self, Error> {
         let (encrypted_key, iv, salt) =
-            Self::encrypt_private_key(wallet.signer().to_bytes().as_ref(), password)?;
+            Self::encrypt_private_key(wallet.to_bytes().as_ref(), password)?;
         Ok(Self {
             address: wallet.address(),
-            balance: U256::zero(),
+            balance: U256::ZERO,
             network: String::new(),
             name: name.to_string(),
             encrypted_private_key: STANDARD.encode(&encrypted_key),

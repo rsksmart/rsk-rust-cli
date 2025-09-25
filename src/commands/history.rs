@@ -7,7 +7,7 @@ use chrono::TimeZone;
 use clap::Parser;
 use colored::Colorize;
 use console::style;
-use ethers::types::Address;
+use alloy::primitives::Address;
 use std::fs;
 use std::str::FromStr;
 

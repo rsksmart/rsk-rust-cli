@@ -5,12 +5,12 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use dialoguer::{Confirm, Input, Select};
-use ethers::{
-    abi::Abi,
-    prelude::*,
-    providers::{Http, Provider, Middleware},
-    signers::LocalWallet,
-    types::{Address, U256},
+use alloy::{
+    primitives::{Address, U256},
+    providers::{Provider, ProviderBuilder, RootProvider},
+    signers::local::PrivateKeySigner,
+    transports::http::{Client, Http},
+    sol,
 };
 use std::sync::Arc;
 use std::str::FromStr;
@@ -49,12 +49,14 @@ pub async fn interact_with_contract() -> Result<()> {
         .ok_or_else(|| anyhow!("No private key found in wallet"))?;
     
     let wallet = private_key
-        .parse::<LocalWallet>()
-        .map_err(|e| anyhow!("Failed to parse private key: {}", e))?
-        .with_chain_id(chain_id);
+        .parse::<PrivateKeySigner>()
+        .map_err(|e| anyhow!("Failed to parse private key: {}", e))?;
     
-    // Create provider
-    let provider = Provider::<Http>::try_from(network_config.rpc_url.as_str())
+    // Create provider with signer
+    let provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        .on_http(network_config.rpc_url.parse()?)
         .map_err(|e| anyhow!("Failed to connect to RPC: {}", e))?;
     
     // Get contract address
@@ -106,12 +108,12 @@ pub async fn interact_with_contract() -> Result<()> {
 }
 
 // Helper function to load wallet
-fn load_wallet() -> Result<LocalWallet> {
+fn load_wallet() -> Result<PrivateKeySigner> {
     // TODO: Implement wallet loading logic
     // This is a placeholder - replace with actual wallet loading logic
     let private_key = "0x...".to_string();
     
-    private_key.parse::<LocalWallet>()
+    private_key.parse::<PrivateKeySigner>()
         .map_err(|e| anyhow!("Failed to parse private key: {}", e))
 }
 

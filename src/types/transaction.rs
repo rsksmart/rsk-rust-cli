@@ -1,11 +1,9 @@
 use crate::utils::alchemy::AlchemyClient;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
-use ethers::providers::Middleware;
-use ethers::{
-    providers::{Http, Provider},
-    types::{Address, Bytes, H256, U64, U256},
-};
+use alloy::primitives::{Address, Bytes, B256, U64, U256};
+use alloy::providers::{Provider, ProviderBuilder};
+use alloy::transports::http::{Client, Http};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
@@ -14,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RskTransaction {
     // Core transaction fields
-    pub hash: H256,
+    pub hash: B256,
     pub from: Address,
     pub to: Option<Address>,
     pub value: U256,
@@ -33,7 +31,7 @@ pub struct RskTransaction {
     // Additional metadata
     pub confirms: Option<U64>,
     pub cumulative_gas_used: Option<U256>,
-    pub logs: Option<Vec<ethers::types::Log>>,
+    pub logs: Option<Vec<alloy::rpc::types::Log>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -58,11 +56,11 @@ impl std::fmt::Display for TransactionStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionReceipt {
-    pub transaction_hash: H256,
+    pub transaction_hash: B256,
     pub status: TransactionStatus,
     pub gas_used: U256,
     pub block_number: Option<U256>,
-    pub block_hash: Option<H256>,
+    pub block_hash: Option<B256>,
     pub cumulative_gas_used: U256,
 }
 
@@ -115,7 +113,7 @@ impl RskTransaction {
         // Parse hash
         let hash = transfer["hash"]
             .as_str()
-            .and_then(|s| H256::from_str(s).ok())
+            .and_then(|s| B256::from_str(s).ok())
             .ok_or_else(|| {
                 anyhow!(
                     "Invalid or missing transaction hash in transfer: {:?}",
@@ -139,7 +137,7 @@ impl RskTransaction {
         } else if let Some(hex_str) = transfer["value"].as_str() {
             U256::from_str_radix(hex_str.trim_start_matches("0x"), 16)?
         } else {
-            U256::zero()
+            U256::ZERO
         };
 
         // Get transaction receipt for status and gas used
@@ -147,7 +145,7 @@ impl RskTransaction {
         let receipt = Self::get_transaction_receipt(&hash, &rpc_url).await?;
         let (status, gas_used) = match receipt {
             Some(r) => (r.status, r.gas_used),
-            None => (TransactionStatus::Pending, U256::zero()),
+            None => (TransactionStatus::Pending, U256::ZERO),
         };
 
         // Get block number and timestamp
@@ -156,7 +154,7 @@ impl RskTransaction {
             .and_then(|s| U256::from_str_radix(s.trim_start_matches("0x"), 16).ok())
         {
             if let Some(block) = alchemy_client
-                .get_block_by_number(block_num.as_u64())
+                .get_block_by_number(block_num.to::<u64>())
                 .await?
             {
                 let timestamp = block
@@ -218,7 +216,7 @@ impl RskTransaction {
             gas: gas_used,
             nonce,
             input: None, // Could be populated from raw transaction if needed
-            block_number: block_number.map(|n| U64::from(n.as_u64())),
+            block_number: block_number.map(|n| U64::from(n.to::<u64>())),
             transaction_index: None, // Could be populated from raw transaction
             timestamp,
             status,
@@ -230,25 +228,23 @@ impl RskTransaction {
     }
 
     async fn get_transaction_receipt(
-        hash: &H256,
+        hash: &B256,
         rpc_url: &str,
     ) -> Result<Option<TransactionReceipt>> {
-        let provider = Provider::<Http>::try_from(rpc_url)?;
+        let provider = ProviderBuilder::new().on_http(rpc_url.parse()?);
         let receipt = provider.get_transaction_receipt(*hash).await?;
 
         Ok(receipt.map(|r| TransactionReceipt {
             transaction_hash: r.transaction_hash,
-            status: r.status.map_or(TransactionStatus::Unknown, |s| {
-                if s.as_u64() == 1 {
-                    TransactionStatus::Success
-                } else {
-                    TransactionStatus::Failed
-                }
-            }),
-            gas_used: r.gas_used.unwrap_or_default(),
-            block_number: r.block_number.map(|n| U256::from(n.as_u64())),
+            status: if r.status() {
+                TransactionStatus::Success
+            } else {
+                TransactionStatus::Failed
+            },
+            gas_used: U256::from(r.gas_used),
+            block_number: r.block_number.map(U256::from),
             block_hash: r.block_hash,
-            cumulative_gas_used: r.cumulative_gas_used,
+            cumulative_gas_used: U256::from(r.inner.cumulative_gas_used()),
         }))
     }
 }

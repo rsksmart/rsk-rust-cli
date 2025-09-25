@@ -3,8 +3,8 @@ use crate::utils::{constants, helper::Config, table::TableBuilder};
 use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::Colorize;
-use ethers::signers::LocalWallet;
-use rand::rngs::OsRng;
+use alloy::signers::local::PrivateKeySigner;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -78,7 +78,7 @@ impl WalletCommand {
                 return Err(anyhow!("Wallet with name '{}' already exists", name));
             }
         }
-        let wallet = LocalWallet::new(&mut OsRng);
+        let wallet = PrivateKeySigner::random();
         let wallet = Wallet::new(wallet, name, password)?;
         let mut wallet_data = if wallet_file.exists() {
             let data = fs::read_to_string(&wallet_file)?;
@@ -101,7 +101,7 @@ impl WalletCommand {
         name: &str,
         password: &str,
     ) -> Result<()> {
-        let wallet = LocalWallet::from_str(private_key)?;
+        let wallet = PrivateKeySigner::from_str(private_key)?;
         let wallet = Wallet::new(wallet, name, password)?;
         let wallet_file = constants::wallet_file_path();
         let mut wallet_data = if wallet_file.exists() {

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use ethers::types::Address;
+use alloy::primitives::Address;
 use std::str::FromStr;
 
 use crate::types::contacts::Contact;
