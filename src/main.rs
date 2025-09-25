@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
 
     // Initialize logging
     env_logger::init();
-    
+
     // Load environment variables from .env file if it exists
     dotenv().ok();
 

@@ -14,7 +14,7 @@ pub fn run_doctor() -> Result<()> {
     // Check config file
     println!("\n{}", style("🔍 Configuration:").bold());
     println!("  Config file: {}", config_manager.config_path().display());
-    
+
     if !config_manager.config_path().exists() {
         println!("  ❌ Configuration file not found");
         println!("     Run `setup` to create a new configuration");
@@ -27,12 +27,12 @@ pub fn run_doctor() -> Result<()> {
 
     // Check API keys
     println!("\n{}", style("🔑 API Keys:").bold());
-    
+
     // Check mainnet API keys
     check_api_key(&config, Network::Mainnet);
     check_api_key(&config, Network::AlchemyMainnet);
     check_api_key(&config, Network::RootStockMainnet);
-    
+
     // Check testnet API keys
     check_api_key(&config, Network::Testnet);
     check_api_key(&config, Network::AlchemyTestnet);
@@ -58,9 +58,10 @@ fn check_api_key(config: &Config, network: Network) {
         Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => {
             &config.alchemy_mainnet_key
         }
-        Network::Testnet | Network::AlchemyTestnet | Network::RootStockTestnet | Network::Regtest => {
-            &config.alchemy_testnet_key
-        }
+        Network::Testnet
+        | Network::AlchemyTestnet
+        | Network::RootStockTestnet
+        | Network::Regtest => &config.alchemy_testnet_key,
     };
 
     let status = match key {

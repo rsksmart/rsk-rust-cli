@@ -1,7 +1,7 @@
 // src/utils/alchemy.rs
 use anyhow::{Result, anyhow};
-use serde_json::Value;
 use reqwest::Client;
+use serde_json::Value;
 
 pub struct AlchemyClient {
     client: Client,
@@ -18,17 +18,17 @@ impl AlchemyClient {
     //     }
     // }
     pub fn new(api_key: String, is_testnet: bool) -> Self {
-    let client = Client::builder()
-        .https_only(true) // Restrict to HTTPS
-        .use_rustls_tls() // Use rustls for TLS (more secure, avoids system-specific issues)
-        .build()
-        .expect("Failed to build reqwest client");
-    Self {
-        client,
-        api_key,
-        is_testnet,
+        let client = Client::builder()
+            .https_only(true) // Restrict to HTTPS
+            .use_rustls_tls() // Use rustls for TLS (more secure, avoids system-specific issues)
+            .build()
+            .expect("Failed to build reqwest client");
+        Self {
+            client,
+            api_key,
+            is_testnet,
+        }
     }
-}
 
     pub fn get_base_url(&self) -> String {
         let network = if self.is_testnet {

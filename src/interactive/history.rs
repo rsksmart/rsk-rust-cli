@@ -1,9 +1,9 @@
 use crate::commands::history::HistoryCommand;
 use crate::commands::tokens::{TokenRegistry, list_tokens};
 use crate::config::ConfigManager;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use console::style;
-use inquire::{Select, Text, validator::Validation, Confirm};
+use inquire::{Confirm, Select, Text, validator::Validation};
 
 /// Shows the transaction history in an interactive way
 pub async fn show_history() -> Result<()> {
@@ -13,11 +13,22 @@ pub async fn show_history() -> Result<()> {
     // Load config and get current network
     let config_manager = ConfigManager::new()?;
     let config = config_manager.load()?;
-    
+
     // Network selection
     let network_options = vec!["mainnet", "testnet"];
     let network_selection = Select::new("Select network:", network_options)
-        .with_starting_cursor(if config.default_network.to_string().to_lowercase().contains("testnet") { 1 } else { 0 })
+        .with_starting_cursor(
+            if config
+                .default_network
+                .to_string()
+                .to_lowercase()
+                .contains("testnet")
+            {
+                1
+            } else {
+                0
+            },
+        )
         .prompt()?;
 
     // Default values for the history command
@@ -77,9 +88,12 @@ pub async fn show_history() -> Result<()> {
 
         // Check if we have an API key, prompt if not
         if command.api_key.is_none() {
-            println!("\n{}", style("⚠️  Alchemy API Key Required").yellow().bold());
+            println!(
+                "\n{}",
+                style("⚠️  Alchemy API Key Required").yellow().bold()
+            );
             println!("Transaction history requires an Alchemy API key.");
-            
+
             let should_add_key = Confirm::new("Would you like to add an API key now?")
                 .with_default(true)
                 .prompt()
@@ -89,7 +103,7 @@ pub async fn show_history() -> Result<()> {
                 let api_key = Text::new("Enter your Alchemy API key:")
                     .with_help_message("Get one at https://www.alchemy.com/")
                     .prompt()?;
-                
+
                 if !api_key.trim().is_empty() {
                     // Save the API key using ConfigManager
                     let mut config = config_manager.load()?;
@@ -99,16 +113,22 @@ pub async fn show_history() -> Result<()> {
                         _ => {}
                     }
                     config_manager.save(&config)?;
-                    
+
                     println!("\n{}", style("✅ API key saved successfully!").green());
                     command.api_key = Some(api_key.trim().to_string());
                 } else {
-                    println!("\n{}", style("❌ No API key provided. Cannot fetch transaction history.").red());
+                    println!(
+                        "\n{}",
+                        style("❌ No API key provided. Cannot fetch transaction history.").red()
+                    );
                     println!("You can add an API key later from the Configuration menu.");
                     return Ok(());
                 }
             } else {
-                println!("\n{}", style("⚠️  Transaction history requires an API key.").yellow());
+                println!(
+                    "\n{}",
+                    style("⚠️  Transaction history requires an API key.").yellow()
+                );
                 println!("You can add an API key later from the Configuration menu.");
                 return Ok(());
             }
@@ -119,7 +139,10 @@ pub async fn show_history() -> Result<()> {
             Ok(_) => {}
             Err(e) => {
                 if e.to_string().contains("API key") {
-                    println!("\n{}", style("❌ Error: Invalid or missing Alchemy API key").red());
+                    println!(
+                        "\n{}",
+                        style("❌ Error: Invalid or missing Alchemy API key").red()
+                    );
                     println!("Please check your API key and try again.");
                     println!("You can update your API key in the Configuration menu.");
                     return Ok(());
@@ -137,7 +160,7 @@ pub async fn show_history() -> Result<()> {
             "Change limit",
             "Filter by status",
             "Toggle incoming/outgoing",
-            "Toggle detailed view",           
+            "Toggle detailed view",
             "Clear all filters",
             "Filter by date range",
             "Back to main menu",
@@ -228,15 +251,15 @@ pub async fn show_history() -> Result<()> {
                         }
                     })
                     .prompt()?;
-                
+
                 let mut export_cmd = command.clone();
                 export_cmd.export_csv = Some(filename);
-                
+
                 match export_cmd.execute().await {
                     Ok(_) => {}
                     Err(e) => eprintln!("Error exporting to CSV: {}", e),
                 }
-                
+
                 continue;
             }
             "Toggle detailed view" => {

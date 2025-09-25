@@ -1,12 +1,15 @@
 use anyhow::Result;
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 
-use crate::config::{Config, ConfigManager, RSK_RPC_DOCS_URL, DOCS_URL};
+use crate::config::{Config, ConfigManager, DOCS_URL, RSK_RPC_DOCS_URL};
 use crate::types::network::Network;
 
 pub fn run_setup_wizard() -> Result<()> {
-    println!("\n{}", style("🌟 Welcome to Rootstock Wallet CLI!").bold().cyan());
+    println!(
+        "\n{}",
+        style("🌟 Welcome to Rootstock Wallet CLI!").bold().cyan()
+    );
     println!("{}", "=".repeat(40));
     println!("\nLet's get you set up with the basic configuration.\n");
 
@@ -23,7 +26,7 @@ pub fn run_setup_wizard() -> Result<()> {
         "Rootstock Mainnet",
         "Rootstock Testnet",
     ];
-    
+
     let network_variants = &[
         Network::Testnet,
         Network::Mainnet,
@@ -33,7 +36,7 @@ pub fn run_setup_wizard() -> Result<()> {
         Network::RootStockMainnet,
         Network::RootStockTestnet,
     ];
-    
+
     let network_idx = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select your default network")
         .default(0)
@@ -63,18 +66,33 @@ fn setup_api_keys(config: &mut Config, network: Network) -> Result<()> {
 
     let key_type = match network {
         Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => "mainnet",
-        Network::Testnet | Network::AlchemyTestnet | Network::RootStockTestnet | Network::Regtest => "testnet",
+        Network::Testnet
+        | Network::AlchemyTestnet
+        | Network::RootStockTestnet
+        | Network::Regtest => "testnet",
     };
 
-    println!("\n{}", style("The wallet works with public RSK nodes by default.").green());
+    println!(
+        "\n{}",
+        style("The wallet works with public RSK nodes by default.").green()
+    );
     println!("You can optionally configure API keys for enhanced performance and features:\n");
-    
-    println!("• {}: Better rate limits and performance", style("RSK RPC API").bold());
-    println!("• {}: Transaction history and advanced queries", style("Alchemy API").bold());
+
+    println!(
+        "• {}: Better rate limits and performance",
+        style("RSK RPC API").bold()
+    );
+    println!(
+        "• {}: Transaction history and advanced queries",
+        style("Alchemy API").bold()
+    );
 
     // Optional RSK RPC API key setup
     if Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(format!("Would you like to set up RSK RPC API key for {} (recommended)?", key_type))
+        .with_prompt(format!(
+            "Would you like to set up RSK RPC API key for {} (recommended)?",
+            key_type
+        ))
         .default(false)
         .interact()?
     {
@@ -86,7 +104,7 @@ fn setup_api_keys(config: &mut Config, network: Network) -> Result<()> {
             .interact_text()?;
 
         // Add RSK RPC API key to config
-        use crate::api::{ApiProvider, ApiKey};
+        use crate::api::{ApiKey, ApiProvider};
         let rsk_api_key = ApiKey {
             key: rsk_key,
             network: key_type.to_string(),
@@ -98,15 +116,19 @@ fn setup_api_keys(config: &mut Config, network: Network) -> Result<()> {
 
     // Optional Alchemy API key setup
     if Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(format!("Would you like to set up Alchemy API key for {} (for transaction history)?", key_type))
+        .with_prompt(format!(
+            "Would you like to set up Alchemy API key for {} (for transaction history)?",
+            key_type
+        ))
         .default(false)
         .interact()?
     {
         println!("\nAlchemy provides transaction history and advanced query features.");
         println!("Get your Alchemy API key from:");
         let alchemy_url = match network {
-            Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => 
-                "https://dashboard.alchemy.com/apps/create?referrer=/apps",
+            Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => {
+                "https://dashboard.alchemy.com/apps/create?referrer=/apps"
+            }
             _ => "https://dashboard.alchemy.com/apps/create?referrer=/apps&chain=rsk-testnet",
         };
         println!("{}", style(alchemy_url).blue().underlined());
@@ -116,7 +138,7 @@ fn setup_api_keys(config: &mut Config, network: Network) -> Result<()> {
             .interact_text()?;
 
         // Add Alchemy API key to config
-        use crate::api::{ApiProvider, ApiKey};
+        use crate::api::{ApiKey, ApiProvider};
         let alchemy_api_key = ApiKey {
             key: alchemy_key.clone(),
             network: key_type.to_string(),
@@ -140,7 +162,10 @@ fn setup_api_keys(config: &mut Config, network: Network) -> Result<()> {
             println!("\nWould you like to set up testnet API keys as well?");
             Network::Testnet
         }
-        Network::Testnet | Network::AlchemyTestnet | Network::RootStockTestnet | Network::Regtest => {
+        Network::Testnet
+        | Network::AlchemyTestnet
+        | Network::RootStockTestnet
+        | Network::Regtest => {
             println!("\nWould you like to set up mainnet API keys as well?");
             Network::Mainnet
         }

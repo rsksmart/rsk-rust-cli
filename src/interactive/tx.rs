@@ -2,11 +2,7 @@ use anyhow::Result;
 use console::style;
 use dialoguer::Input;
 
-use crate::{
-    commands::tx::TxCommand,
-    config::ConfigManager,
-    types::network::Network,
-};
+use crate::{commands::tx::TxCommand, config::ConfigManager, types::network::Network};
 
 /// Interactive transaction status checker
 pub async fn check_transaction_status() -> Result<()> {
@@ -40,7 +36,7 @@ pub async fn check_transaction_status() -> Result<()> {
         if input.to_lowercase() == "q" {
             return Ok(());
         }
-        
+
         let tx_hash = input;
 
         // Create and execute the transaction status command
@@ -51,7 +47,7 @@ pub async fn check_transaction_status() -> Result<()> {
         };
 
         println!("\n{}", style("⏳ Fetching transaction status...").dim());
-        
+
         match cmd.execute().await {
             Ok(_) => {
                 // Offer to check another transaction
@@ -59,7 +55,7 @@ pub async fn check_transaction_status() -> Result<()> {
                     .with_prompt("\nCheck another transaction?")
                     .default(false)
                     .interact()?;
-                
+
                 if !check_another {
                     break;
                 }
@@ -67,21 +63,27 @@ pub async fn check_transaction_status() -> Result<()> {
             Err(e) => {
                 let error_msg = e.to_string();
                 if error_msg.contains("not found") || error_msg.contains("does not exist") {
-                    println!("\n{}", style("❌ Transaction not found or still pending.").yellow());
+                    println!(
+                        "\n{}",
+                        style("❌ Transaction not found or still pending.").yellow()
+                    );
                     println!("The transaction might still be in the mempool or may have failed.");
-                    
-                    println!("\n{}", style("💡 Tip: Transactions usually take 15-30 seconds to be mined.").dim());
+
+                    println!(
+                        "\n{}",
+                        style("💡 Tip: Transactions usually take 15-30 seconds to be mined.").dim()
+                    );
                 } else {
                     println!("\n{}", style("❌ Error checking transaction status:").red());
                     println!("{}", error_msg);
                 }
-                
+
                 // Ask if user wants to try again
                 let try_again = dialoguer::Confirm::new()
                     .with_prompt("Would you like to try again?")
                     .default(true)
                     .interact()?;
-                
+
                 if !try_again {
                     break;
                 }

@@ -212,11 +212,12 @@ impl Contact {
         }
         if let Some(stats) = &self.transaction_stats
             && let Some(last_tx) = stats.last_transaction
-                && last_tx.timestamp() > chrono::Local::now().timestamp() {
-                    return Err(anyhow::anyhow!(
-                        "Last transaction timestamp cannot be in the future"
-                    ));
-                }
+            && last_tx.timestamp() > chrono::Local::now().timestamp()
+        {
+            return Err(anyhow::anyhow!(
+                "Last transaction timestamp cannot be in the future"
+            ));
+        }
 
         if self.created_at.timestamp() < 1_000_000_000 {
             return Err(anyhow::anyhow!("Created at timestamp is too old"));

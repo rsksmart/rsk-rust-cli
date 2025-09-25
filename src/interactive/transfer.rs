@@ -12,7 +12,6 @@ use colored::*;
 use console::style;
 use inquire::{Select, Text, validator::Validation};
 
-
 /// Displays the fund transfer interface
 pub async fn send_funds() -> Result<()> {
     println!("\n{}", style("💸 Send Funds").bold());
@@ -24,14 +23,11 @@ pub async fn send_funds() -> Result<()> {
     println!("Using network: {}", network);
 
     // Ask user if they want to select from contacts or enter address manually
-    let send_options = vec![
-        "📝 Enter address manually",
-        "👥 Select from contacts",
-    ];
-    
-    let send_choice = Select::new("How would you like to specify the recipient?", send_options)
-        .prompt()?;
-    
+    let send_options = vec!["📝 Enter address manually", "👥 Select from contacts"];
+
+    let send_choice =
+        Select::new("How would you like to specify the recipient?", send_options).prompt()?;
+
     let to = if send_choice == "👥 Select from contacts" {
         // Load contacts
         let cmd = ContactsCommand {
@@ -91,7 +87,7 @@ pub async fn send_funds() -> Result<()> {
             },
         ),
     );
-    
+
     if tokens.is_empty() {
         return Err(anyhow!("No tokens found for {} network", network));
     }
@@ -101,29 +97,27 @@ pub async fn send_funds() -> Result<()> {
         .into_iter()
         .filter(|(_, info)| {
             // Only include tokens that match the current network or are RBTC
-            info.address == "0x0000000000000000000000000000000000000000" || 
-            registry.list_tokens(Some(&network))
-                .iter()
-                .any(|(_, token_info)| token_info.address == info.address)
+            info.address == "0x0000000000000000000000000000000000000000"
+                || registry
+                    .list_tokens(Some(&network))
+                    .iter()
+                    .any(|(_, token_info)| token_info.address == info.address)
         })
         .collect();
 
     // Get just the display names for the selection menu
-    let token_display_names: Vec<String> = token_choices
-        .iter()
-        .map(|(name, _)| name.clone())
-        .collect();
+    let token_display_names: Vec<String> =
+        token_choices.iter().map(|(name, _)| name.clone()).collect();
 
     // Let the user select which token to send
-    let selection = Select::new("Select token to send:", token_display_names)
-        .prompt()?;
+    let selection = Select::new("Select token to send:", token_display_names).prompt()?;
 
     // Find the selected token info
     let (display_name, token_info) = token_choices
         .into_iter()
         .find(|(name, _)| name == &selection)
         .ok_or_else(|| anyhow!("Selected token not found"))?;
-        
+
     // Extract the token symbol (remove the (Native) suffix if present)
     let token_symbol = display_name
         .split_whitespace()
@@ -142,18 +136,19 @@ pub async fn send_funds() -> Result<()> {
                 }
             })
             .prompt()?;
-            
+
         // Convert RBTC to wei for preview
         let rbtc: f64 = input.parse().unwrap_or(0.0);
         let wei = (rbtc * 1e18) as u128;
-        
+
         // Show preview and ask for confirmation
         let confirmed = transfer_preview::show_transaction_preview(
             &to,
             &wei.to_string(),
             config.default_network,
-        ).await?;
-        
+        )
+        .await?;
+
         if confirmed {
             break input;
         } else {
@@ -168,7 +163,7 @@ pub async fn send_funds() -> Result<()> {
     } else {
         Some(token_address.clone())
     };
-    
+
     // Show transaction summary
     println!("\n{}", style("📝 Transaction Summary").bold());
     println!("{}", "=".repeat(30));
@@ -190,7 +185,9 @@ pub async fn send_funds() -> Result<()> {
     // Execute the transfer command
     let cmd = TransferCommand {
         address: to,
-        value: amount.parse::<f64>().map_err(|_| anyhow::anyhow!("Invalid amount format"))?,
+        value: amount
+            .parse::<f64>()
+            .map_err(|_| anyhow::anyhow!("Invalid amount format"))?,
         token: if token_address == "0x0000000000000000000000000000000000000000" {
             None
         } else {
@@ -199,7 +196,7 @@ pub async fn send_funds() -> Result<()> {
     };
 
     let result = cmd.execute().await?;
-    
+
     println!(
         "\n{}: Transaction confirmed! Tx Hash: {}",
         "Success".green().bold(),

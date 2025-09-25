@@ -6,8 +6,8 @@ use dirs;
 use serde::{Deserialize, Serialize};
 
 // Re-export the API types for easier access
+pub use crate::api::{ApiConfig, ApiKey, ApiProvider};
 use crate::types::network::Network;
-pub use crate::api::{ApiConfig, ApiProvider, ApiKey};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -27,16 +27,22 @@ impl Config {
     pub fn get_api_key(&self, provider: &ApiProvider) -> Option<&str> {
         let network_str = match self.default_network {
             Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => "mainnet",
-            Network::Testnet | Network::AlchemyTestnet | Network::RootStockTestnet | Network::Regtest => "testnet",
+            Network::Testnet
+            | Network::AlchemyTestnet
+            | Network::RootStockTestnet
+            | Network::Regtest => "testnet",
         };
-        
+
         // First try to get from the new API config
-        if let Some(key) = self.api.keys.iter().find(|k| {
-            &k.provider == provider && k.network == network_str
-        }) {
+        if let Some(key) = self
+            .api
+            .keys
+            .iter()
+            .find(|k| &k.provider == provider && k.network == network_str)
+        {
             return Some(&key.key);
         }
-        
+
         // Fall back to legacy keys for backward compatibility (Alchemy only)
         match (provider, network_str) {
             (ApiProvider::Alchemy, "mainnet") => self.alchemy_mainnet_key.as_deref(),
@@ -44,26 +50,31 @@ impl Config {
             _ => None,
         }
     }
-    
+
     /// Get RSK RPC API key for blockchain operations
     pub fn get_rsk_rpc_key(&self) -> Option<&str> {
         self.get_api_key(&ApiProvider::RskRpc)
     }
-    
+
     /// Get Alchemy API key for transaction history
     pub fn get_alchemy_key(&self) -> Option<&str> {
         self.get_api_key(&ApiProvider::Alchemy)
     }
-    
+
     /// Add or update an API key
-    pub fn set_api_key(&mut self, provider: ApiProvider, key: String, name: Option<String>) -> String {
+    pub fn set_api_key(
+        &mut self,
+        provider: ApiProvider,
+        key: String,
+        name: Option<String>,
+    ) -> String {
         let network = match self.default_network {
             Network::Mainnet | Network::AlchemyMainnet | Network::RootStockMainnet => "mainnet",
             _ => "testnet",
         };
-        
+
         let display_name = name.as_deref().unwrap_or("unnamed");
-        
+
         // Create and add the API key
         let api_key = ApiKey {
             key: key.clone(),
@@ -71,18 +82,21 @@ impl Config {
             provider: provider.clone(),
             name: name.clone(),
         };
-        
+
         // Add to the API keys list
         self.api.keys.push(api_key);
-        
+
         // Also update the legacy fields for backward compatibility
         match (provider.clone(), network) {
             (ApiProvider::Alchemy, "mainnet") => self.alchemy_mainnet_key = Some(key),
             (ApiProvider::Alchemy, _) => self.alchemy_testnet_key = Some(key),
             _ => {}
         }
-        
-        format!("API key for {} on {} saved as '{}'", provider, network, display_name)
+
+        format!(
+            "API key for {} on {} saved as '{}'",
+            provider, network, display_name
+        )
     }
 }
 
@@ -107,9 +121,9 @@ impl ConfigManager {
         let config_dir = dirs::config_dir()
             .context("Could not find config directory")?
             .join("rootstock-wallet");
-        
+
         std::fs::create_dir_all(&config_dir)?;
-        
+
         Ok(Self {
             config_path: config_dir.join("config.json"),
         })
@@ -120,19 +134,16 @@ impl ConfigManager {
             return Ok(Config::default());
         }
 
-        let content = fs::read_to_string(&self.config_path)
-            .context("Failed to read config file")?;
-        
-        serde_json::from_str(&content)
-            .context("Failed to parse config file")
+        let content =
+            fs::read_to_string(&self.config_path).context("Failed to read config file")?;
+
+        serde_json::from_str(&content).context("Failed to parse config file")
     }
 
     pub fn save(&self, config: &Config) -> Result<()> {
-        let content = serde_json::to_string_pretty(config)
-            .context("Failed to serialize config")?;
-        
-        fs::write(&self.config_path, content)
-            .context("Failed to write config file")
+        let content = serde_json::to_string_pretty(config).context("Failed to serialize config")?;
+
+        fs::write(&self.config_path, content).context("Failed to write config file")
     }
 
     pub fn config_path(&self) -> &Path {
@@ -141,7 +152,7 @@ impl ConfigManager {
 
     pub fn ensure_configured(&self) -> Result<()> {
         let config = self.load()?;
-        
+
         match config.default_network {
             Network::Mainnet if config.alchemy_mainnet_key.is_none() => {
                 anyhow::bail!(
@@ -153,7 +164,7 @@ impl ConfigManager {
                     "Testnet API key not configured. Please run `setup` or `config set alchemy-testnet-key <key>`"
                 );
             }
-            _ => Ok(())
+            _ => Ok(()),
         }
     }
 
@@ -161,30 +172,32 @@ impl ConfigManager {
     /// WARNING: This will delete ALL wallet data and cannot be undone!
     pub fn clear_cache(&self) -> Result<()> {
         use std::fs;
-        
+
         // Clear config directory
-        let config_dir = self.config_path().parent()
+        let config_dir = self
+            .config_path()
+            .parent()
             .ok_or_else(|| anyhow::anyhow!("Invalid config directory path"))?;
-        
+
         if config_dir.exists() {
             // Remove all files in the config directory
             for entry in fs::read_dir(config_dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                
+
                 if path.is_dir() {
                     fs::remove_dir_all(&path)?;
                 } else {
                     fs::remove_file(&path)?;
                 }
-                
+
                 println!("Removed: {}", path.display());
             }
-            
+
             // Recreate the empty directory
             fs::create_dir_all(config_dir)?;
         }
-        
+
         // Clear wallet data directory
         if let Some(data_dir) = dirs::data_local_dir() {
             let wallet_data_dir = data_dir.join("rootstock-wallet");
@@ -193,25 +206,25 @@ impl ConfigManager {
                 for entry in fs::read_dir(&wallet_data_dir)? {
                     let entry = entry?;
                     let path = entry.path();
-                    
+
                     if path.is_dir() {
                         fs::remove_dir_all(&path)?;
                     } else {
                         fs::remove_file(&path)?;
                     }
-                    
+
                     println!("Removed: {}", path.display());
                 }
-                
+
                 // Remove the wallet data directory itself
                 fs::remove_dir(&wallet_data_dir)?;
                 println!("Removed: {}", wallet_data_dir.display());
             }
         }
-        
+
         println!("\n✅ Cache and all wallet data have been cleared successfully.");
         println!("A new configuration will be created when you start the wallet again.");
-        
+
         Ok(())
     }
 }
