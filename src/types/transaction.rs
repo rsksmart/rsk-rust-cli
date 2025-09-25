@@ -4,7 +4,7 @@ use ethers::{
     providers::{Http, Provider},
     types::{Address, Bytes, H256, U64, U256},
 };
-use ethers_providers::Middleware;
+use ethers::providers::Middleware;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;

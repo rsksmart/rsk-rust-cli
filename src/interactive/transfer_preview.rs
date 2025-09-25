@@ -10,7 +10,7 @@ use anyhow::{Result, anyhow};
 use console::style;
 use dialoguer::Confirm;
 use ethers::types::{Address, U256};
-use ethers_providers::Middleware;
+use ethers::providers::Middleware;
 
 /// Helper function to convert wei to RBTC
 fn convert_wei_to_rbtc(wei: U256) -> f64 {
