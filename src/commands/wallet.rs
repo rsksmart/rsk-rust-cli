@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::Colorize;
 use ethers::signers::LocalWallet;
-use rand::thread_rng;
+use rand::rngs::OsRng;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -54,7 +54,7 @@ impl WalletCommand {
                 return Err(anyhow!("Wallet with name '{}' already exists", name));
             }
         }
-        let wallet = LocalWallet::new(&mut thread_rng());
+        let wallet = LocalWallet::new(&mut OsRng);
         let wallet = Wallet::new(wallet, name, password)?;
         let mut wallet_data = if wallet_file.exists() {
             let data = fs::read_to_string(&wallet_file)?;
