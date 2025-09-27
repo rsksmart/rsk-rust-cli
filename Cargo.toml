@@ -47,7 +47,7 @@ rpassword = "7.4.0"
 cbc = "0.1.2"
 cipher = "0.4.4"
 typenum = "1.18.0"
-generic-array = "0.14.7"
+generic-array = "1.2.0"
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 console = "0.15"
 clearscreen = "4.0.2"
