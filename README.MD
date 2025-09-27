@@ -1,12 +1,14 @@
-# Rootstock Wallet CLI
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rsksmart/rsk-rust-cli/badge)](https://scorecard.dev/viewer/?uri=github.com/rsksmart/rsk-rust-cli)
+[![CodeQL](https://github.com/rsksmart/rsk-rust-cli/workflows/CodeQL/badge.svg)](https://github.com/rsksmart/rsk-rust-cli/actions?query=workflow%3ACodeQL)
 
+<img src="rootstock-logo.png" alt="RSK Logo" style="width:100%; height: auto;" />
 
- A secure, feature-rich Rust-based CLI wallet for the Rootstock blockchain
+# Rootstock Rust CLI
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/cosmasken/rootstock-wallet/blob/main/LICENSE)
-[![Made with Rust](https://img.shields.io/badge/Made%20with-Rust-orange)](https://www.rust-lang.org/)
+A command-line interface (CLI) tool written in Rust for interacting with the Rootstock (Rootstock) blockchain.  
+This tool provides comprehensive functionality to connect to an Ethereum-compatible RPC endpoint and manage wallets, query balances, send transactions, and interact with the Rootstock network.
 
-## 🚀 Features
+## Features
 
 ### Wallet Management
 
@@ -60,8 +62,8 @@
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/cosmasken/rootstock-wallet.git
-   cd rootstock-wallet
+   git clone https://github.com/rsksmart/rsk-rust-cli.git
+   cd rsk-rust-cli
    ```
 
 2. Build the project:
@@ -77,7 +79,7 @@
    cargo run
    
    # For production
-   ./target/release/rootstock-wallet
+   ./target/release/rsk-rust-cli
    ```
 
 ## ⚙️ Configuration
@@ -182,34 +184,30 @@ Add, list, and delete contacts from your address book.
 - Check file permissions if access is denied
 - Ensure you're using the correct network (mainnet/testnet)
 
-## 🤝 Contributing
 
-We welcome contributions from the community! Here's how you can help:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Please read our [Contributing Guidelines](CONTRIBUTING.md) for more details on our development process and code of conduct.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built as part of the Rootstock Hacktivator program
-- Special thanks to the Rootstock team for their support
-- Inspired by the vibrant Rootstock community
-
-## 📚 Resources
+## Resources
 
 - [Rootstock Documentation](https://developers.rsk.co/)
 - [RSK Smart Contracts](https://developers.rsk.co/develop/)
 - [RSK Developer Portal](https://developers.rsk.co/)
-- [GitHub Repository](https://github.com/cosmasken/rootstock-wallet)
-- [Issue Tracker](https://github.com/cosmasken/rootstock-wallet/issues)
+- [Issue Tracker](https://github.com/rsksmart/rsk-rust-cli/issues)
 
-Made with ❤️ for the Rootstock ecosystem
+## Contributing
+
+We welcome contributions from the community. Please fork the repository and submit pull requests with your changes. Ensure your code adheres to the project's main objective.
+
+## Support
+
+For any questions or support, please open an issue on the repository or reach out to the maintainers.
+
+# Disclaimer
+
+The software provided in this GitHub repository is offered "as is," without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+
+- **Testing:** The software has not undergone testing of any kind, and its functionality, accuracy, reliability, and suitability for any purpose are not guaranteed.
+- **Use at Your Own Risk:** The user assumes all risks associated with the use of this software. The author(s) of this software shall not be held liable for any damages, including but not limited to direct, indirect, incidental, special, consequential, or punitive damages arising out of the use of or inability to use this software, even if advised of the possibility of such damages.
+- **No Liability:** The author(s) of this software are not liable for any loss or damage, including without limitation, any loss of profits, business interruption, loss of information or data, or other pecuniary loss arising out of the use of or inability to use this software.
+- **Sole Responsibility:** The user acknowledges that they are solely responsible for the outcome of the use of this software, including any decisions made or actions taken based on the software's output or functionality.
+- **No Endorsement:** Mention of any specific product, service, or organization does not constitute or imply endorsement by the author(s) of this software.
+- **Modification and Distribution:** This software may be modified and distributed under the terms of the license provided with the software. By modifying or distributing this software, you agree to be bound by the terms of the license.
+- **Assumption of Risk:** By using this software, the user acknowledges and agrees that they have read, understood, and accepted the terms of this disclaimer and assumes all risks associated with the use of this software.
