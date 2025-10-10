@@ -15,7 +15,7 @@ tokio = { version = "1.45.1", features = ["full"] }
 zeroize = "1.8.1"
 # Alloy dependencies - successor to ethers-rs with security fixes
 alloy = { version = "0.6", features = ["full", "provider-http", "signer-local", "contract", "rpc-types", "consensus"] }
-alloy-provider = "0.6"
+alloy-provider = "0.12"
 alloy-signer = "0.6" 
 alloy-signer-local = "0.6"
 alloy-contract = "0.6"
