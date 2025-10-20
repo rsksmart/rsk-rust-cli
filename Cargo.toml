@@ -21,7 +21,7 @@ alloy-signer-local = "0.6"
 alloy-contract = "0.6"
 alloy-primitives = "0.6"
 alloy-rpc-types = "0.6"
-alloy-transport-http = "0.6"
+alloy-transport-http = "1.0"
 alloy-consensus = "0.6"
 thiserror = "2.0.12"
 clap = { version = "4.5.36", features = ["derive"] }
