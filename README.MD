@@ -19,6 +19,9 @@ This tool provides comprehensive functionality to connect to an Ethereum-compati
 - List all available wallets
 - Rename or delete wallets
 
+### Carry out basic zk-proving and verifying with noir
+- 
+
 ### Asset Management
 
 - Check RBTC balance for any address
