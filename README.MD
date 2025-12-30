@@ -99,7 +99,79 @@ The wallet features an intuitive interactive interface. Simply run:
 cargo run
 ```
 
+## 🔐 ZK-SNARK Privacy Extensions
+
+This SDK now includes support for ZK-SNARK privacy features using Risc0.
+
+### Features
+- **Zero-Knowledge Proof Generation**: Create proofs for private transactions and voting.
+- **Verification**: Verify proofs locally or on-chain.
+- **Private Voting Demo**: End-to-end example of a confidential voting system.
+
+### Requirements & Setup
+
+To run the ZK-SNARK features and the Private Voting Demo, you need the following:
+
+1.  **Risc0 Toolchain (`rzup`)**:
+    The ZK circuits are built using Risc0. You must install the `rzup` toolchain installer:
+    ```bash
+    curl -L https://risczero.com/install | bash
+    rzup install
+    ```
+
+2.  **Environment Variables**:
+    Create a `.env` file in the root directory or export these variables:
+    ```bash
+    # Your Private Key (Must have RBTC on RSK Testnet for gas)
+    export PRIVATE_KEY="your_private_key_here"
+
+    # Deployed Address of 'PrivateVoting.sol' (see contracts/)
+    export CONTRACT_ADDRESS="0x..."
+    ```
+
+3.  **RSK Testnet Funds**:
+    Get RBTC from the [RSK Testnet Faucet](https://faucet.rsk.co/).
+
+### Usage
+
+**1. Generate a Proof (CLI):**
+```bash
+cargo run -- zk generate --circuit transfer --input input.json --output proof.bin
+```
+
+**2. Verify a Proof (CLI):**
+```bash
+cargo run -- zk verify --circuit transfer --proof proof.bin
+```
+
+**3. Run Private Voting Demo:**
+This demo generates a ZK proof of a valid vote locally and submits it to the `PrivateVoting` smart contract on RSK Testnet.
+
+*Prerequisite*: Deploy `contracts/PrivateVoting.sol` to RSK Testnet (e.g., using [Remix](https://remix.ethereum.org/)).
+**Note**: Constructor arguments `_merkleRoot` and `_imageId` can be set to `0x0000000000000000000000000000000000000000000000000000000000000000` (32 bytes of zeros) for this demo.
+
+```bash
+# Ensure env vars are set
+source .env
+
+# Run the demo
+cargo run --bin demo_voting
+```
+
+**Optional: Deploy locally with Foundry**
+If you have `foundry` installed, you can deploy the contract directly:
+```bash
+source .env
+
+forge create contracts/PrivateVoting.sol:PrivateVoting \
+  --broadcast \
+  --rpc-url https://public-node.testnet.rsk.co \
+  --private-key $PRIVATE_KEY \
+  --constructor-args 0x0000000000000000000000000000000000000000000000000000000000000000 0x0000000000000000000000000000000000000000000000000000000000000000
+```
+
 ## Demo
+
 
 ### First Time Setup
 

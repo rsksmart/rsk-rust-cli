@@ -1,7 +1,7 @@
 use crate::types::transaction::RskTransaction;
+use alloy::primitives::{Address, B256, U256};
 use anyhow::Result;
 use colored::Colorize;
-use alloy::primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -210,13 +210,16 @@ impl Contact {
         if self.created_at.timestamp() < 0 {
             return Err(anyhow::anyhow!("Created at timestamp cannot be negative"));
         }
-        if let Some(stats) = &self.transaction_stats
-            && let Some(last_tx) = stats.last_transaction
-            && last_tx.timestamp() > chrono::Local::now().timestamp()
-        {
-            return Err(anyhow::anyhow!(
-                "Last transaction timestamp cannot be in the future"
-            ));
+        if let Some(stats) = &self.transaction_stats {
+            if let Some(last_tx) = stats.last_transaction {
+                if last_tx.timestamp() > chrono::Local::now().timestamp() {
+                    {
+                        return Err(anyhow::anyhow!(
+                            "Last transaction timestamp cannot be in the future"
+                        ));
+                    }
+                }
+            }
         }
 
         if self.created_at.timestamp() < 1_000_000_000 {

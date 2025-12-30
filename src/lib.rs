@@ -9,3 +9,5 @@ pub mod interactive;
 pub mod qr;
 pub mod types;
 pub mod utils;
+pub mod zk;
+

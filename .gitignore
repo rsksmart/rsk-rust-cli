@@ -23,6 +23,12 @@ exported.key
 re.json
 phonebook.json
 
+target 
+out
+cache 
+proof.bin
+input.json
+
 *.csv
 
 record-demo.sh

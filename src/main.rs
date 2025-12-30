@@ -10,16 +10,21 @@ mod interactive;
 mod setup;
 mod types;
 mod utils;
+mod zk;
+
+use clap::Parser;
+use commands::root::Commands;
+use commands::zk::handle_zk_command;
+
+#[derive(Parser)]
+#[command(name = "rootstock-wallet")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Check if any command line arguments were provided
-    if env::args().count() > 1 {
-        eprintln!("This program only runs in interactive mode. Please run without any arguments.");
-        eprintln!("Usage: cargo run");
-        std::process::exit(1);
-    }
-
     // Initialize logging
     env_logger::init();
 
@@ -32,8 +37,22 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    // Start the interactive interface
-    interactive::start().await?;
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Zk(args)) => {
+            handle_zk_command(args).await?;
+        }
+        Some(_cmd) => {
+            eprintln!(
+                "Other commands are currently only supported in interactive mode. Please run without arguments to start interactive mode."
+            );
+        }
+        None => {
+            // Start the interactive interface
+            interactive::start().await?;
+        }
+    }
 
     Ok(())
 }
