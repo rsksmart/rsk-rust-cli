@@ -279,7 +279,7 @@ impl ContactsCommand {
     pub fn load_contacts(&self) -> Result<Vec<Contact>> {
         let contacts_path = dirs::data_local_dir()
             .ok_or_else(|| anyhow::anyhow!("Failed to get data directory"))?
-            .join("rootstock-wallet")
+            .join("rsk-rust-cli")
             .join("contacts.json");
 
         if !contacts_path.exists() {
@@ -294,7 +294,7 @@ impl ContactsCommand {
     // pub fn save_contacts(&self, contacts: &[Contact]) -> Result<()> {
     //     let contacts_path = dirs::data_local_dir()
     //         .ok_or_else(|| anyhow::anyhow!("Failed to get data directory"))?
-    //         .join("rootstock-wallet")
+    //         .join("rsk-rust-cli")
     //         .join("contacts.json");
 
     //     std::fs::create_dir_all(contacts_path.parent().unwrap())?;
@@ -305,7 +305,7 @@ impl ContactsCommand {
     pub fn save_contacts(&self, contacts: &[Contact]) -> Result<()> {
         let contacts_dir = dirs::data_local_dir()
             .ok_or_else(|| anyhow::anyhow!("Failed to get data directory"))?
-            .join("rootstock-wallet");
+            .join("rsk-rust-cli");
 
         std::fs::create_dir_all(&contacts_dir)?;
 

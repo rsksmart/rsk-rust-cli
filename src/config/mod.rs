@@ -17,4 +17,4 @@ pub const RSK_RPC_DOCS_URL: &str = "https://dev.rootstock.io/developers/rpc-api/
 pub const ALCH_MAINNET_URL: &str = "https://dashboard.alchemy.com/apps/create?referrer=/apps";
 pub const ALCH_TESTNET_URL: &str =
     "https://dashboard.alchemy.com/apps/create?referrer=/apps&chain=rsk-testnet";
-pub const DOCS_URL: &str = "https://github.com/cosmasken/rootstock-wallet/wiki";
+pub const DOCS_URL: &str = "https://github.com/rsksmart/rsk-rust-cli/wiki";

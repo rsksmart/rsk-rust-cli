@@ -1,6 +1,6 @@
 use anyhow::Result;
 use console::style;
-use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
+use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 
 // Import config and API types
 use crate::api::ApiProvider;
@@ -161,9 +161,9 @@ async fn add_api_key(config_manager: &ConfigManager) -> Result<()> {
     let (provider, _) = &providers[selection];
 
     // Get API key
-    let key: String = Input::with_theme(&ColorfulTheme::default())
+    let key: String = Password::with_theme(&ColorfulTheme::default())
         .with_prompt("Enter your API key")
-        .interact_text()?;
+        .interact()?;
 
     // Get optional name
     let name: String = Input::with_theme(&ColorfulTheme::default())

@@ -1,6 +1,6 @@
 use crate::config::ConfigManager;
 use crate::types::wallet::WalletData;
-use crate::utils::constants;
+use crate::utils::{constants, secrets::SecretPassword};
 use crate::utils::eth::EthClient;
 use crate::utils::helper::Config as HelperConfig;
 use anyhow::{Result, anyhow};
@@ -11,6 +11,7 @@ use alloy::signers::local::PrivateKeySigner;
 use rpassword::prompt_password;
 use std::fs;
 use std::str::FromStr;
+use zeroize::Zeroizing;
 
 /// Result of a transfer operation
 #[derive(Debug)]
@@ -34,7 +35,7 @@ pub struct TransferCommand {
 
     /// Amount to send (in tokens or RBTC)
     #[arg(long, required = true)]
-    pub value: f64,
+    pub value: String,
 
     /// Token address (for ERC20 transfers)
     #[arg(long)]
@@ -44,6 +45,11 @@ pub struct TransferCommand {
 impl TransferCommand {
     /// Execute the transfer command and return the transfer result
     pub async fn execute(&self) -> Result<TransferResult> {
+        self.execute_with_password(None).await
+    }
+
+    /// Execute the transfer command with an optional pre-validated password
+    pub async fn execute_with_password(&self, password: Option<&str>) -> Result<TransferResult> {
         // Load wallet file and get current wallet
         let wallet_file = constants::wallet_file_path();
         if !wallet_file.exists() {
@@ -60,20 +66,26 @@ impl TransferCommand {
         })?;
 
         // Prompt for password and decrypt private key
-        let password = prompt_password("Enter password for the default wallet: ")?;
+        let password = if let Some(pwd) = password {
+            SecretPassword::new(pwd.to_string())
+        } else {
+            SecretPassword::new(prompt_password("Enter password for the default wallet: ")?)
+        };
         let private_key = default_wallet.decrypt_private_key(&password)?;
-        let _local_wallet = PrivateKeySigner::from_str(&private_key)
+        // The password is automatically zeroized when it goes out of scope
+
+        let _local_wallet = PrivateKeySigner::from_str(private_key.expose())
             .map_err(|e| anyhow!("Failed to create PrivateKeySigner: {}", e))?;
 
         // Get the network from config
         let config = ConfigManager::new()?.load()?;
 
-        // Create a new helper config with the private key
+        // Create a new helper config with the private key (using Zeroizing wrapper)
         let client_config = HelperConfig {
             network: config.default_network.get_config(),
             wallet: crate::utils::helper::WalletConfig {
                 current_wallet_address: None,
-                private_key: Some(private_key.clone()),
+                private_key: Some(Zeroizing::new(private_key.expose().to_string())),
                 mnemonic: None,
             },
         };
@@ -107,10 +119,10 @@ impl TransferCommand {
             (None, Some("RBTC".to_string()))
         };
 
-        // Parse amount (convert f64 to wei or token units)
+        // Parse amount (convert string to wei or token units)
         // Both RBTC and tokens use 18 decimals
         let decimals = 18;
-        let amount = alloy::primitives::utils::parse_units(&self.value.to_string(), decimals)
+        let amount = alloy::primitives::utils::parse_units(&self.value, decimals)
             .map_err(|e| anyhow!("Invalid amount: {}", e))?;
 
         // Send transaction
@@ -181,6 +193,9 @@ impl TransferCommand {
             "Success".green().bold(),
             status_str
         );
+
+        // Zeroize sensitive data before returning
+        // private_key is automatically zeroized when it goes out of scope
 
         Ok(TransferResult {
             tx_hash,

@@ -1,6 +1,11 @@
 pub mod alchemy;
+pub mod api;
+pub mod api_validator;
 pub mod constants;
 pub mod eth;
 pub mod helper;
+pub mod network;
+pub mod secure_fs;
+pub mod secrets;
 pub mod table;
 pub mod terminal;

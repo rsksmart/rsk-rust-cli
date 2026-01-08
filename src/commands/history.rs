@@ -1,7 +1,9 @@
 use crate::types::transaction::{RskTransaction, TransactionStatus};
 use crate::types::wallet::WalletData;
 use crate::utils::alchemy::AlchemyClient;
+use crate::utils::api_validator::validate_api_key_format;
 use crate::utils::{constants, table::TableBuilder};
+use crate::api::ApiProvider;
 use anyhow::Result;
 use chrono::TimeZone;
 use clap::Parser;
@@ -12,7 +14,7 @@ use std::fs;
 use std::str::FromStr;
 
 /// Show the transaction history for an address or the current wallet
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Clone)]
 pub struct HistoryCommand {
     /// Address to check transaction history for
     #[arg(short, long)]
@@ -75,6 +77,29 @@ pub struct HistoryCommand {
     pub network: String,
 }
 
+// Custom Debug implementation that redacts the API key
+impl std::fmt::Debug for HistoryCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HistoryCommand")
+            .field("address", &self.address)
+            .field("contact", &self.contact)
+            .field("limit", &self.limit)
+            .field("detailed", &self.detailed)
+            .field("status", &self.status)
+            .field("token", &self.token)
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .field("sort_by", &self.sort_by)
+            .field("sort_order", &self.sort_order)
+            .field("export_csv", &self.export_csv)
+            .field("incoming", &self.incoming)
+            .field("outgoing", &self.outgoing)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("network", &self.network)
+            .finish()
+    }
+}
+
 impl HistoryCommand {
     pub async fn execute(&self) -> Result<()> {
         // 1. Load config and resolve API key
@@ -83,10 +108,10 @@ impl HistoryCommand {
         let mut stored_api_key: Option<String> = None;
 
         // If export is requested, ensure we have a filename
-        if let Some(filename) = &self.export_csv
-            && !filename.ends_with(".csv")
-        {
-            return Err(anyhow::anyhow!("Export filename must end with .csv"));
+        if let Some(filename) = &self.export_csv {
+            if !filename.ends_with(".csv") {
+                return Err(anyhow::anyhow!("Export filename must end with .csv"));
+            }
         }
 
         // Try to load API key from wallet file
@@ -99,9 +124,16 @@ impl HistoryCommand {
 
                 // Persist CLI key if supplied and not yet saved
                 if stored_api_key.is_none() && self.api_key.is_some() {
-                    val["alchemyApiKey"] = serde_json::Value::String(self.api_key.clone().unwrap());
-                    fs::write(&wallet_file, serde_json::to_string_pretty(&val)?)?;
-                    stored_api_key = self.api_key.clone();
+                    let api_key = self.api_key.clone().unwrap();
+                    
+                    // Validate API key format before saving
+                    if let Err(e) = validate_api_key_format(&ApiProvider::Alchemy, &api_key) {
+                        return Err(anyhow::anyhow!("Invalid API key format: {}", e));
+                    }
+                    
+                    val["alchemyApiKey"] = serde_json::Value::String(api_key.clone());
+                    crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&val)?)?;
+                    stored_api_key = Some(api_key);
                     println!("{}", "Saved Alchemy API key ✅".green());
                 }
             }

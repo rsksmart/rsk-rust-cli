@@ -33,28 +33,37 @@ impl TxCommand {
         // Load config
         let config = ConfigManager::new()?.load()?;
 
-        // Get API key from config
-        let api_key = if let Some(key) = &self.api_key {
-            key.clone()
+        // Get API key and determine endpoint
+        let (api_key, url) = if let Some(key) = &self.api_key {
+            // Use provided API key with Alchemy
+            let alchemy_url = if self.testnet {
+                "https://rootstock-testnet.g.alchemy.com/v2"
+            } else {
+                "https://rootstock-mainnet.g.alchemy.com/v2"
+            };
+            (key.clone(), alchemy_url.to_string())
+        } else if let Some(rsk_key) = config.get_api_key(&ApiProvider::RskRpc) {
+            // Use RSK RPC endpoint
+            let rsk_url = if self.testnet {
+                "https://public-node.testnet.rsk.co"
+            } else {
+                "https://public-node.rsk.co"
+            };
+            (rsk_key.to_string(), rsk_url.to_string())
+        } else if let Some(alchemy_key) = config.get_api_key(&ApiProvider::Alchemy) {
+            // Fall back to Alchemy
+            let alchemy_url = if self.testnet {
+                "https://rootstock-testnet.g.alchemy.com/v2"
+            } else {
+                "https://rootstock-mainnet.g.alchemy.com/v2"
+            };
+            (alchemy_key.to_string(), alchemy_url.to_string())
         } else {
-            config
-                .get_api_key(&ApiProvider::Alchemy)
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "No API key found for {}. Please set one up using 'wallet config'.",
-                        network
-                    )
-                })?
-                .to_string()
+            anyhow::bail!(
+                "No API key found for {}. Please set up RSK RPC or Alchemy API key using 'wallet config'.",
+                network
+            );
         };
-
-        let base_url = if self.testnet {
-            "https://rootstock-testnet.g.alchemy.com/v2"
-        } else {
-            "https://rootstock-mainnet.g.alchemy.com/v2"
-        };
-
-        let url = base_url.to_string();
 
         // Get receipt first as it contains the status
         let receipt = self
@@ -87,10 +96,14 @@ impl TxCommand {
             "params": params
         });
 
-        let response = client
-            .post(url)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .json(&request)
+        let mut request_builder = client.post(url).json(&request);
+        
+        // Add authorization header only for Alchemy endpoints
+        if url.contains("alchemy.com") {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", api_key));
+        }
+        
+        let response = request_builder
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Request failed: {}", e))?
@@ -124,10 +137,14 @@ impl TxCommand {
             "params": params
         });
 
-        let response = client
-            .post(url)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .json(&request)
+        let mut request_builder = client.post(url).json(&request);
+        
+        // Add authorization header only for Alchemy endpoints
+        if url.contains("alchemy.com") {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", api_key));
+        }
+        
+        let response = request_builder
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Request failed: {}", e))?
@@ -150,8 +167,12 @@ impl TxCommand {
         // Extract values with defaults
         let block_number = receipt["blockNumber"]
             .as_str()
-            .unwrap_or("pending")
-            .to_string();
+            .and_then(|hex| {
+                u64::from_str_radix(hex.trim_start_matches("0x"), 16)
+                    .ok()
+                    .map(|num| num.to_string())
+            })
+            .unwrap_or_else(|| "pending".to_string());
 
         let from = tx_details["from"].as_str().unwrap_or("unknown").to_string();
 
@@ -205,38 +226,92 @@ impl TxCommand {
         println!("{}", "-".repeat(60));
 
         println!("{}", style(format!("  Hash: {}", self.tx_hash)).dim());
+        
+        // Show timestamp if available
+        if let Some(timestamp) = tx_details.get("timestamp").and_then(|t| t.as_str()) {
+            if let Ok(timestamp_num) = u64::from_str_radix(timestamp.trim_start_matches("0x"), 16) {
+                let datetime = chrono::DateTime::from_timestamp(timestamp_num as i64, 0)
+                    .unwrap_or_else(|| chrono::Utc::now());
+                println!("{}", style(format!("  Timestamp: {} UTC", datetime.format("%Y-%m-%d %H:%M:%S"))).dim());
+            }
+        }
+        
         println!("{}", style(format!("  Block: {}", block_number)).dim());
         println!("{}", style(format!("  From: {}", from)).dim());
         println!("{}", style(format!("  To: {}", to)).dim());
-        println!("\n{}", style("Transaction Data").bold().underlined());
+        
+        // Show value in RBTC
+        if let Some(value_hex) = tx_details.get("value").and_then(|v| v.as_str()) {
+            if let Ok(value_wei) = u128::from_str_radix(value_hex.trim_start_matches("0x"), 16) {
+                let value_rbtc = value_wei as f64 / 1e18;
+                if value_rbtc > 0.0 {
+                    println!("{}", style(format!("  Value: {} RBTC", value_rbtc)).dim());
+                }
+            }
+        }
+        
+        // Show gas information
+        if let Some(gas_used_hex) = receipt.get("gasUsed").and_then(|g| g.as_str()) {
+            if let Ok(gas_used) = u64::from_str_radix(gas_used_hex.trim_start_matches("0x"), 16) {
+                println!("{}", style(format!("  Gas Used: {}", gas_used)).dim());
+            }
+        }
+        
+        if let Some(gas_price_hex) = tx_details.get("gasPrice").and_then(|g| g.as_str()) {
+            if let Ok(gas_price_wei) = u128::from_str_radix(gas_price_hex.trim_start_matches("0x"), 16) {
+                let gas_price_gwei = gas_price_wei as f64 / 1e9;
+                println!("{}", style(format!("  Gas Price: {} Gwei", gas_price_gwei)).dim());
+            }
+        }
+        
+        // Calculate transaction fee
+        if let (Some(gas_used_hex), Some(gas_price_hex)) = (
+            receipt.get("gasUsed").and_then(|g| g.as_str()),
+            tx_details.get("gasPrice").and_then(|g| g.as_str())
+        ) {
+            if let (Ok(gas_used), Ok(gas_price)) = (
+                u128::from_str_radix(gas_used_hex.trim_start_matches("0x"), 16),
+                u128::from_str_radix(gas_price_hex.trim_start_matches("0x"), 16)
+            ) {
+                let fee_wei = gas_used * gas_price;
+                let fee_rbtc = fee_wei as f64 / 1e18;
+                println!("{}", style(format!("  Transaction Fee: {} RBTC", fee_rbtc)).dim());
+            }
+        }
+        
+        // Show nonce
+        if let Some(nonce_hex) = tx_details.get("nonce").and_then(|n| n.as_str()) {
+            if let Ok(nonce) = u64::from_str_radix(nonce_hex.trim_start_matches("0x"), 16) {
+                println!("{}", style(format!("  Nonce: {}", nonce)).dim());
+            }
+        }
+
+        println!("\n{}", style("Status").bold().underlined());
         println!("{}", "-".repeat(60));
-        // println!("{}", style(format!("  Value: {}", value)).dim());
-        // println!("{}", style(format!("  Gas Price: {}", gas_price)).dim());
-        // println!("{}", style(format!("  Gas Used: {}", gas_used)).dim());
         println!("\n{}", style(format!("  Status: {}", status)).dim());
 
         // If there's a contract address, show it
-        if let Some(contract_addr) = receipt["contractAddress"].as_str()
-            && !contract_addr.is_empty()
-        {
-            println!("\n{}", style("Contract Creation").bold().underlined());
-            println!("{}", "-".repeat(60));
-            println!("{}", style(format!("  Contract: {}", contract_addr)).dim());
+        if let Some(contract_addr) = receipt["contractAddress"].as_str() {
+            if !contract_addr.is_empty() {
+                println!("\n{}", style("Contract Creation").bold().underlined());
+                println!("{}", "-".repeat(60));
+                println!("{}", style(format!("  Contract: {}", contract_addr)).dim());
+            }
         }
 
         // Show logs if any
-        if let Some(logs) = receipt["logs"].as_array()
-            && !logs.is_empty()
-        {
-            println!(
-                "\n{}",
-                style(format!("  Logs ({}):", logs.len()))
-                    .bold()
-                    .underlined()
-            );
-            for log in logs {
-                if let Some(topic) = log["topics"].as_array().and_then(|t| t[0].as_str()) {
-                    println!("  - {}", topic);
+        if let Some(logs) = receipt["logs"].as_array() {
+            if !logs.is_empty() {
+                println!(
+                    "\n{}",
+                    style(format!("  Logs ({}):", logs.len()))
+                        .bold()
+                        .underlined()
+                );
+                for log in logs {
+                    if let Some(topic) = log["topics"].as_array().and_then(|t| t[0].as_str()) {
+                        println!("  - {}", topic);
+                    }
                 }
             }
         }

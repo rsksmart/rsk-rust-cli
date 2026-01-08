@@ -6,7 +6,6 @@ use crate::utils::terminal::{self, show_version};
 use anyhow::Result;
 use console::style;
 use dialoguer::{Select, theme::ColorfulTheme};
-use alloy::primitives::U256;
 use alloy::providers::Provider;
 use std::io;
 use std::time::Duration;

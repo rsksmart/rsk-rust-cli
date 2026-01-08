@@ -1,6 +1,6 @@
 #![allow(warnings)]
 use anyhow::{Result, anyhow};
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use std::env;
 
 mod api;

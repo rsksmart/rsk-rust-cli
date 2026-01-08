@@ -67,7 +67,7 @@ impl ApiKeys {
     fn get_config_path() -> Result<PathBuf> {
         let mut path = dirs::config_dir()
             .context("Could not find config directory")?
-            .join("rootstock-wallet");
+            .join("rsk-rust-cli");
         
         std::fs::create_dir_all(&path)?;
         path.push(API_KEYS_FILE);

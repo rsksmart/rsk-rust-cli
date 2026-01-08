@@ -106,11 +106,35 @@ pub async fn send_funds() -> Result<()> {
         .collect();
 
     // Get just the display names for the selection menu
-    let token_display_names: Vec<String> =
+    let mut token_display_names: Vec<String> =
         token_choices.iter().map(|(name, _)| name.clone()).collect();
+    token_display_names.push("🏠 Back to Main Menu".to_string());
 
     // Let the user select which token to send
-    let selection = Select::new("Select token to send:", token_display_names).prompt()?;
+    let selection = loop {
+        match Select::new("Select token to send:", token_display_names.clone()).prompt() {
+            Ok(selection) => break selection,
+            Err(_) => {
+                // User pressed ESC - ask for confirmation
+                use dialoguer::Confirm;
+                let should_exit = Confirm::new()
+                    .with_prompt("Return to main menu?")
+                    .default(true)
+                    .interact()
+                    .unwrap_or(true);
+                
+                if should_exit {
+                    return Ok(());
+                }
+                // Continue loop to show menu again
+            }
+        }
+    };
+
+    // Handle back option
+    if selection == "🏠 Back to Main Menu" {
+        return Ok(());
+    }
 
     // Find the selected token info
     let (display_name, token_info) = token_choices
@@ -146,6 +170,7 @@ pub async fn send_funds() -> Result<()> {
             &to,
             &wei.to_string(),
             config.default_network,
+            &display_name,
         )
         .await?;
 
@@ -184,24 +209,49 @@ pub async fn send_funds() -> Result<()> {
 
     // Execute the transfer command
     let cmd = TransferCommand {
-        address: to,
-        value: amount
-            .parse::<f64>()
-            .map_err(|_| anyhow::anyhow!("Invalid amount format"))?,
+        address: to.clone(),
+        value: amount.clone(),
         token: if token_address == "0x0000000000000000000000000000000000000000" {
             None
         } else {
-            Some(token_address)
+            Some(token_address.clone())
         },
     };
 
-    let result = cmd.execute().await?;
-
-    println!(
-        "\n{}: Transaction confirmed! Tx Hash: {}",
-        "Success".green().bold(),
-        result.tx_hash
-    );
+    match cmd.execute().await {
+        Ok(result) => {
+            println!(
+                "\n{}: Transaction confirmed! Tx Hash: {}",
+                "Success".green().bold(),
+                result.tx_hash
+            );
+            
+            let explorer_url = if network.to_string().to_lowercase().contains("testnet") {
+                format!("https://explorer.testnet.rsk.co/tx/{:x}", result.tx_hash)
+            } else {
+                format!("https://explorer.rsk.co/tx/{:x}", result.tx_hash)
+            };
+            
+            println!("🔗 View on Explorer: {}", explorer_url);
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("Insufficient") {
+                println!("{}", style("❌ Transaction Failed").red().bold());
+                println!("{}", error_msg);
+                println!("💡 Please check your balance and try again with a smaller amount.");
+            } else if error_msg.contains("gas") {
+                println!("{}", style("⛽ Gas Error").yellow().bold());
+                println!("{}", error_msg);
+                println!("💡 Try again when network conditions improve.");
+            } else {
+                println!("{}", style("❌ Transaction Failed").red().bold());
+                println!("Error: {}", error_msg);
+                println!("💡 Please check your inputs and network connection.");
+            }
+            return Ok(());
+        }
+    }
 
     Ok(())
 }

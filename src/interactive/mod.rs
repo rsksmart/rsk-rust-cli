@@ -19,7 +19,7 @@ use dialoguer::{Select, theme::ColorfulTheme};
 
 // Re-export public functions
 pub use self::{
-    balance::show_balance, bulk_transfer::bulk_transfer, config::show_config_menu,
+    balance::{show_balance, show_offline_balance}, bulk_transfer::bulk_transfer, config::show_config_menu,
     contacts::manage_contacts, history::show_history, system::system_menu, tokens::token_menu,
     transfer::send_funds, tx::check_transaction_status, wallet::create_wallet_with_name,
     wallet::wallet_menu,
@@ -27,6 +27,7 @@ pub use self::{
 
 // Import for network status display
 use crate::config::ConfigManager;
+use crate::utils::network::{check_connectivity, NetworkStatus};
 
 // Import Network from the types module
 use crate::types::network::Network;
@@ -63,11 +64,19 @@ pub async fn start() -> Result<()> {
     );
     println!("{}\n", "-".repeat(40));
 
+    // Check network connectivity
+    let network_status = check_connectivity().await;
+    let is_online = network_status == NetworkStatus::Online;
+
     // Display current status
     let config_manager = ConfigManager::new()?;
     let config = config_manager.load()?;
 
-    println!("  {}", style("🟢 Online").green());
+    if is_online {
+        println!("  {}", style("🟢 Online").green());
+    } else {
+        println!("  {}", style("🔴 Offline").red());
+    }
     println!("  {}", get_network_status(config.default_network));
 
     // Check if wallet data file exists and count wallets
@@ -93,29 +102,78 @@ pub async fn start() -> Result<()> {
     };
     println!("  {}\n", style(wallet_text).dim());
 
-    loop {
-        let options = vec![
-            format!("{}  Check Balance", style("💰").bold().green()),
-            format!("{}  Send Funds", style("💸").bold().yellow()),
-            format!("{}  Bulk Transfer", style("📤").bold().yellow()),
-            format!("{}  Check Transaction Status", style("🔍").bold().cyan()),
-            format!("{}  Transaction History", style("📜").bold().cyan()),
-            format!("{}  Wallet Management", style("🔑").bold().blue()),
-            format!("{}  Token Management", style("🪙").bold().magenta()),
-            format!("{}  Contact Management", style("📇").bold().cyan()),
-            format!("{}  Configuration", style("⚙️").bold().white()),
-            format!("{}  System", style("💻").bold().cyan()),
-            format!("{}  Exit", style("🚪").bold().red()),
-        ];
+    if !is_online {
+        println!("  {}", style("ℹ️  Limited functionality available offline").yellow());
+        println!();
+    }
 
-        let selection = Select::with_theme(&ColorfulTheme::default())
+    loop {
+        let mut options = vec![];
+        let mut option_map = vec![];
+
+        // Add options based on network status
+        if is_online {
+            options.push(format!("{}  Check Balance", style("💰").bold().green()));
+            option_map.push(0);
+            options.push(format!("{}  Send Funds", style("💸").bold().yellow()));
+            option_map.push(1);
+            options.push(format!("{}  Bulk Transfer", style("📤").bold().yellow()));
+            option_map.push(2);
+            options.push(format!("{}  Check Transaction Status", style("🔍").bold().cyan()));
+            option_map.push(3);
+            options.push(format!("{}  Transaction History", style("📜").bold().cyan()));
+            option_map.push(4);
+        } else {
+            options.push(format!("{}  Check Balance {}", style("💰").bold().dim(), style("(offline)").dim()));
+            option_map.push(0);
+        }
+
+        // Always available options
+        options.push(format!("{}  Wallet Management", style("🔑").bold().blue()));
+        option_map.push(5);
+        options.push(format!("{}  Token Management", style("🪙").bold().magenta()));
+        option_map.push(6);
+        options.push(format!("{}  Contact Management", style("📇").bold().cyan()));
+        option_map.push(7);
+        options.push(format!("{}  Configuration", style("⚙️").bold().white()));
+        option_map.push(8);
+        options.push(format!("{}  System", style("💻").bold().cyan()));
+        option_map.push(9);
+        options.push(format!("{}  Exit", style("🚪").bold().red()));
+        option_map.push(10);
+
+        let selection = match Select::with_theme(&ColorfulTheme::default())
             .with_prompt("\nWhat would you like to do?")
             .items(&options)
             .default(0)
-            .interact()?;
+            .interact() {
+                Ok(selection) => selection,
+                Err(_) => {
+                    // User pressed ESC or interrupted - ask for confirmation
+                    use dialoguer::Confirm;
+                    let should_exit = Confirm::new()
+                        .with_prompt("Are you sure you want to exit?")
+                        .default(false)
+                        .interact()
+                        .unwrap_or(false);
+                    
+                    if should_exit {
+                        println!("👋 Goodbye!");
+                        return Ok(());
+                    } else {
+                        continue; // Go back to menu
+                    }
+                }
+            };
 
-        match selection {
-            0 => show_balance().await?,
+        match option_map[selection] {
+            0 => {
+                if is_online {
+                    show_balance().await?;
+                } else {
+                    show_offline_balance().await?;
+                }
+            },
             1 => send_funds().await?,
             2 => bulk_transfer().await?,
             3 => check_transaction_status().await?,
