@@ -36,3 +36,7 @@ record-demo.sh
 *.cast
 
 *.md
+
+# Sub-crate lock files (library crates; root Cargo.lock is kept)
+zk-circuits/Cargo.lock
+zk-circuits/methods/guest/Cargo.lock

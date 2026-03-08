@@ -1,33 +1,16 @@
-use serde::{Deserialize, Serialize};
+//! ZK circuit types — re-exported from the shared `zk-circuits` crate.
+//!
+//! Types are defined in `zk-circuits/src/types.rs` (single source of truth).
+//! Do not define types here; add them there instead.
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TransferInputs {
-    pub sender_balance: u64,
-    pub amount: u64,
-    pub sender_id: u32,
-    pub receiver_id: u32,
-}
+#[cfg(feature = "zk")]
+pub use zk_circuits::types::{TransferInputs, TransferPublicOutput, VoteInputs, VotePublicOutput};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct TransferPublicOutput {
-    pub sender_id: u32,
-    pub receiver_id: u32,
-    pub amount: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VoteInputs {
-    pub voter_id: u32,
-    pub vote_choice: u8,
-    pub secret: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct VotePublicOutput {
-    pub vote_hash: [u8; 32],
-    pub nullifier: [u8; 32],
-}
-
+/// Circuit type selector for CLI and host-side dispatch.
+///
+/// `clap::ValueEnum` is a CLI concern only, so `CircuitType` lives here rather
+/// than in the shared crate (which has no clap dependency).
+#[derive(clap::ValueEnum, Clone, Debug, Copy, PartialEq, Eq)]
 pub enum CircuitType {
     Transfer,
     Vote,

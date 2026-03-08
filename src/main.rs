@@ -1,7 +1,5 @@
-#![allow(warnings)]
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use dotenv::dotenv;
-use std::env;
 
 mod api;
 mod commands;
@@ -25,19 +23,20 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
     env_logger::init();
-
-    // Load environment variables from .env file if it exists
     dotenv().ok();
 
-    // Ensure wallet is configured
-    if let Err(e) = setup::ensure_configured().await {
-        eprintln!("Failed to configure wallet: {}", e);
-        std::process::exit(1);
-    }
-
     let cli = Cli::parse();
+
+    // ZK proof commands are purely computational and do not require a configured wallet.
+    // Only run the setup wizard for non-ZK commands.
+    let is_zk_command = matches!(cli.command, Some(Commands::Zk(_)));
+    if !is_zk_command {
+        if let Err(e) = setup::ensure_configured().await {
+            eprintln!("Failed to configure wallet: {}", e);
+            std::process::exit(1);
+        }
+    }
 
     match cli.command {
         Some(Commands::Zk(args)) => {
@@ -45,11 +44,11 @@ async fn main() -> Result<()> {
         }
         Some(_cmd) => {
             eprintln!(
-                "Other commands are currently only supported in interactive mode. Please run without arguments to start interactive mode."
+                "Other commands are currently only supported in interactive mode. \
+                 Please run without arguments to start interactive mode."
             );
         }
         None => {
-            // Start the interactive interface
             interactive::start().await?;
         }
     }

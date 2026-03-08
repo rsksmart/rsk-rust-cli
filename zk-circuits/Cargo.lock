@@ -3571,6 +3571,7 @@ version = "0.1.0"
 dependencies = [
  "risc0-build",
  "risc0-zkvm",
+ "serde",
  "zk_methods",
 ]
 
@@ -3580,6 +3581,7 @@ version = "0.1.0"
 dependencies = [
  "risc0-zkvm",
  "serde",
+ "sha2",
 ]
 
 [[package]]
