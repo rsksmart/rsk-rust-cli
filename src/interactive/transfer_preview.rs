@@ -21,7 +21,7 @@ fn convert_wei_to_rbtc(wei: U256) -> f64 {
 }
 
 /// Displays transaction details and asks for confirmation
-pub async fn show_transaction_preview(to: &str, amount: &str, network: Network) -> Result<bool> {
+pub async fn show_transaction_preview(to: &str, amount: &str, network: Network, token_symbol: &str) -> Result<bool> {
     println!("\n{}", style("Transaction Preview").bold().underlined());
     println!("• To: {}", style(to).cyan());
 
@@ -29,11 +29,12 @@ pub async fn show_transaction_preview(to: &str, amount: &str, network: Network) 
     let amount_wei =
         U256::from_str(amount).map_err(|e| anyhow::anyhow!("Invalid amount format: {}", e))?;
 
-    // Convert to RBTC for display
-    let amount_rbtc = convert_wei_to_rbtc(amount_wei);
+    // Convert to token units for display
+    let amount_tokens = convert_wei_to_rbtc(amount_wei);
     println!(
-        "• Amount: {} RBTC ({} wei)",
-        style(amount_rbtc).green(),
+        "• Amount: {} {} ({} wei)",
+        style(amount_tokens).green(),
+        style(token_symbol).green(),
         style(amount_wei).dim()
     );
 
@@ -80,12 +81,21 @@ pub async fn show_transaction_preview(to: &str, amount: &str, network: Network) 
     println!("• Estimated Gas: {}", style(estimated_gas).yellow());
     println!("• Estimated Fee: {} RBTC", style(gas_cost_rbtc).red());
 
-    let total_amount = amount_wei.checked_add(gas_cost).unwrap_or(amount_wei);
-    let total_rbtc = convert_wei_to_rbtc(total_amount);
-    println!(
-        "• Total (Amount + Fee): {} RBTC",
-        style(total_rbtc).green().bold()
-    );
+    if token_symbol == "RBTC" {
+        let total_amount = amount_wei.checked_add(gas_cost).unwrap_or(amount_wei);
+        let total_rbtc = convert_wei_to_rbtc(total_amount);
+        println!(
+            "• Total (Amount + Fee): {} RBTC",
+            style(total_rbtc).green().bold()
+        );
+    } else {
+        println!(
+            "• Total: {} {} + {} RBTC (gas fee)",
+            style(amount_tokens).green().bold(),
+            style(token_symbol).green().bold(),
+            style(gas_cost_rbtc).red()
+        );
+    }
 
     // Ask for confirmation
     let confirm = Confirm::new()

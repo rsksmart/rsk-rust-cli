@@ -1,9 +1,10 @@
 use crate::types::wallet::{Wallet, WalletData};
-use crate::utils::{constants, helper::Config, table::TableBuilder};
+use crate::utils::{constants, helper::Config, secrets::SecretPassword, table::TableBuilder};
 use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::Colorize;
 use alloy::signers::local::PrivateKeySigner;
+use zeroize::Zeroize;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,7 +16,7 @@ pub struct WalletCommand {
     pub action: WalletAction,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 pub enum WalletAction {
     Create {
         name: String,
@@ -41,6 +42,61 @@ pub enum WalletAction {
     Delete {
         name: String,
     },
+}
+
+// Custom Debug implementation that redacts sensitive fields
+impl std::fmt::Debug for WalletAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WalletAction::Create { name, .. } => {
+                f.debug_struct("Create")
+                    .field("name", name)
+                    .field("password", &"<redacted>")
+                    .finish()
+            }
+            WalletAction::Import { name, .. } => {
+                f.debug_struct("Import")
+                    .field("name", name)
+                    .field("private_key", &"<redacted>")
+                    .field("password", &"<redacted>")
+                    .finish()
+            }
+            WalletAction::List => write!(f, "List"),
+            WalletAction::Switch { name } => {
+                f.debug_struct("Switch").field("name", name).finish()
+            }
+            WalletAction::Rename { old_name, new_name } => {
+                f.debug_struct("Rename")
+                    .field("old_name", old_name)
+                    .field("new_name", new_name)
+                    .finish()
+            }
+            WalletAction::Backup { name, path } => {
+                f.debug_struct("Backup")
+                    .field("name", name)
+                    .field("path", path)
+                    .finish()
+            }
+            WalletAction::Delete { name } => {
+                f.debug_struct("Delete").field("name", name).finish()
+            }
+        }
+    }
+}
+
+impl Drop for WalletAction {
+    fn drop(&mut self) {
+        match self {
+            WalletAction::Create { password, .. } => {
+                password.zeroize();
+            }
+            WalletAction::Import { private_key, password, .. } => {
+                private_key.zeroize();
+                password.zeroize();
+            }
+            _ => {}
+        }
+    }
 }
 
 impl WalletCommand {
@@ -79,7 +135,8 @@ impl WalletCommand {
             }
         }
         let wallet = PrivateKeySigner::random();
-        let wallet = Wallet::new(wallet, name, password)?;
+        let secret_password = SecretPassword::new(password.to_string());
+        let wallet = Wallet::new(wallet, name, &secret_password)?;
         let mut wallet_data = if wallet_file.exists() {
             let data = fs::read_to_string(&wallet_file)?;
             serde_json::from_str::<WalletData>(&data)?
@@ -87,7 +144,7 @@ impl WalletCommand {
             WalletData::new()
         };
         let _ = wallet_data.add_wallet(wallet.clone());
-        fs::write(&wallet_file, serde_json::to_string_pretty(&wallet_data)?)?;
+        crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
         println!("{}", "🎉 Wallet created successfully".green());
         println!("Address: {:?}", wallet.address());
         println!("Wallet saved at: {}", wallet_file.display());
@@ -102,7 +159,8 @@ impl WalletCommand {
         password: &str,
     ) -> Result<()> {
         let wallet = PrivateKeySigner::from_str(private_key)?;
-        let wallet = Wallet::new(wallet, name, password)?;
+        let secret_password = SecretPassword::new(password.to_string());
+        let wallet = Wallet::new(wallet, name, &secret_password)?;
         let wallet_file = constants::wallet_file_path();
         let mut wallet_data = if wallet_file.exists() {
             let data = fs::read_to_string(&wallet_file)?;
@@ -111,7 +169,7 @@ impl WalletCommand {
             WalletData::new()
         };
         let _ = wallet_data.add_wallet(wallet);
-        fs::write(&wallet_file, serde_json::to_string_pretty(&wallet_data)?)?;
+        crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
         println!("{}", "✅ Wallet imported successfully".green());
         println!("Wallet saved at: {}", wallet_file.display());
         Ok(())
@@ -154,7 +212,7 @@ impl WalletCommand {
             .ok_or_else(|| anyhow!("Wallet '{}' not found", name))?
             .address;
         let _ = wallet_data.switch_wallet(&format!("0x{:x}", wallet_address));
-        fs::write(&wallet_file, serde_json::to_string_pretty(&wallet_data)?)?;
+        crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
         println!("{}", format!("✅ Switched to wallet: {}", name).green());
         println!("Address: 0x{:x}", wallet_address);
         Ok(())
@@ -182,7 +240,7 @@ impl WalletCommand {
         } else {
             return Err(anyhow!("Failed to rename wallet '{}'", old_name));
         }
-        fs::write(&wallet_file, serde_json::to_string_pretty(&wallet_data)?)?;
+        crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
         println!(
             "{}",
             format!("✅ Wallet renamed from '{}' to '{}'", old_name, new_name).green()
@@ -207,20 +265,25 @@ impl WalletCommand {
         let wallet = wallet_data
             .get_wallet_by_name(name)
             .ok_or_else(|| anyhow!("Wallet '{}' not found", name))?;
-        let filename = path
-            .file_name()
-            .and_then(|f| f.to_str())
-            .ok_or_else(|| anyhow!("Invalid filename in path: {}", path.display()))?;
-        let backup_path = PathBuf::from(format!("./{}", filename));
-        fs::write(&backup_path, serde_json::to_string_pretty(&wallet)?)?;
-        if !backup_path.exists() {
-            return Err(anyhow!(
-                "Backup file was not created at: {}",
-                backup_path.display()
-            ));
+        
+        // Create parent directories if they don't exist
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
         }
+        
+        // Write backup file with secure permissions (0o600)
+        fs::write(path, serde_json::to_string_pretty(&wallet)?)?;
+        
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(path)?.permissions();
+            perms.set_mode(0o600);
+            fs::set_permissions(path, perms)?;
+        }
+        
         println!("{}", "✅ Backup created successfully".green());
-        println!("Backup saved at: {}", backup_path.display());
+        println!("Backup saved at: {}", path.display());
         Ok(())
     }
 
@@ -238,7 +301,7 @@ impl WalletCommand {
             ));
         }
         let _ = wallet_data.remove_wallet(&address);
-        fs::write(&wallet_file, serde_json::to_string_pretty(&wallet_data)?)?;
+        crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
         println!("{}", format!("✅ Deleted wallet: {}", name).green());
         println!("Address: {}", address);
         Ok(())

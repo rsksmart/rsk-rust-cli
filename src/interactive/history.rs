@@ -1,9 +1,11 @@
 use crate::commands::history::HistoryCommand;
 use crate::commands::tokens::{TokenRegistry, list_tokens};
 use crate::config::ConfigManager;
-use anyhow::{Context, Result};
+use crate::utils::api_validator::{validate_api_key_format, validate_api_key, ValidationResult};
+use crate::api::{ApiKey, ApiProvider};
+use anyhow::Result;
 use console::style;
-use inquire::{Confirm, Select, Text, validator::Validation};
+use inquire::{Confirm, Select, Text, Password, validator::Validation};
 
 /// Shows the transaction history in an interactive way
 pub async fn show_history() -> Result<()> {
@@ -100,29 +102,67 @@ pub async fn show_history() -> Result<()> {
                 .unwrap_or(false);
 
             if should_add_key {
-                let api_key = Text::new("Enter your Alchemy API key:")
+                let api_key = Password::new("Enter your Alchemy API key:")
                     .with_help_message("Get one at https://www.alchemy.com/")
+                    .with_validator(|input: &str| {
+                        if input.trim().is_empty() {
+                            return Ok(Validation::Invalid("API key cannot be empty".into()));
+                        }
+                        if let Err(e) = validate_api_key_format(&ApiProvider::Alchemy, input.trim()) {
+                            return Ok(Validation::Invalid(e.to_string().into()));
+                        }
+                        Ok(Validation::Valid)
+                    })
                     .prompt()?;
 
-                if !api_key.trim().is_empty() {
-                    // Save the API key using ConfigManager
-                    let mut config = config_manager.load()?;
-                    match network_selection {
-                        "mainnet" => config.alchemy_mainnet_key = Some(api_key.trim().to_string()),
-                        "testnet" => config.alchemy_testnet_key = Some(api_key.trim().to_string()),
-                        _ => {}
-                    }
-                    config_manager.save(&config)?;
+                // Validate the API key
+                let api_key_obj = ApiKey {
+                    key: crate::utils::secrets::SecretString::new(api_key.trim().to_string()),
+                    network: network_selection.to_string(),
+                    provider: ApiProvider::Alchemy,
+                    name: None,
+                };
 
-                    println!("\n{}", style("✅ API key saved successfully!").green());
-                    command.api_key = Some(api_key.trim().to_string());
-                } else {
-                    println!(
-                        "\n{}",
-                        style("❌ No API key provided. Cannot fetch transaction history.").red()
-                    );
-                    println!("You can add an API key later from the Configuration menu.");
-                    return Ok(());
+                println!("🔍 Validating API key...");
+                match validate_api_key(&api_key_obj).await {
+                    Ok(ValidationResult::Valid) => {
+                        // Save the API key using ConfigManager
+                        let mut config = config_manager.load()?;
+                        match network_selection {
+                            "mainnet" => config.alchemy_mainnet_key = Some(api_key.trim().to_string()),
+                            "testnet" => config.alchemy_testnet_key = Some(api_key.trim().to_string()),
+                            _ => {}
+                        }
+                        config_manager.save(&config)?;
+
+                        println!("{}", style("✅ API key validated and saved successfully!").green());
+                        command.api_key = Some(api_key.trim().to_string());
+                    }
+                    Ok(ValidationResult::Invalid(reason)) => {
+                        println!("{}: {}", style("❌ Invalid API key").red().bold(), reason);
+                        println!("Please check your API key and try again.");
+                        return Ok(());
+                    }
+                    Ok(ValidationResult::NetworkError(error)) => {
+                        println!("{}: {}", style("⚠️ Network Error").yellow().bold(), error);
+                        println!("Saving key anyway - validation will retry when network is available");
+                        
+                        // Save anyway for offline use
+                        let mut config = config_manager.load()?;
+                        match network_selection {
+                            "mainnet" => config.alchemy_mainnet_key = Some(api_key.trim().to_string()),
+                            "testnet" => config.alchemy_testnet_key = Some(api_key.trim().to_string()),
+                            _ => {}
+                        }
+                        config_manager.save(&config)?;
+                        
+                        println!("{}", style("💾 API key saved (unvalidated)").yellow());
+                        command.api_key = Some(api_key.trim().to_string());
+                    }
+                    Err(e) => {
+                        println!("{}: {}", style("❌ Validation Error").red().bold(), e);
+                        return Ok(());
+                    }
                 }
             } else {
                 println!(
@@ -138,16 +178,25 @@ pub async fn show_history() -> Result<()> {
         match command.execute().await {
             Ok(_) => {}
             Err(e) => {
-                if e.to_string().contains("API key") {
-                    println!(
-                        "\n{}",
-                        style("❌ Error: Invalid or missing Alchemy API key").red()
-                    );
-                    println!("Please check your API key and try again.");
-                    println!("You can update your API key in the Configuration menu.");
+                let error_msg = e.to_string();
+                if error_msg.contains("Must be authenticated") || error_msg.contains("API key") {
+                    println!("{}", style("❌ Authentication Failed").red().bold());
+                    println!("Your API key appears to be invalid or expired.");
+                    println!("💡 Please check your API key in the Configuration menu.");
+                    
+                    // Clear the invalid API key
+                    command.api_key = None;
+                    continue;
+                } else if error_msg.contains("network") || error_msg.contains("connection") {
+                    println!("{}", style("⚠️ Network Error").yellow().bold());
+                    println!("Unable to connect to the API service.");
+                    println!("💡 Please check your internet connection and try again.");
                     return Ok(());
                 } else {
-                    return Err(e).context("Failed to fetch transaction history");
+                    println!("{}", style("❌ Transaction History Error").red().bold());
+                    println!("Error: {}", error_msg);
+                    println!("💡 This might be a temporary issue. Please try again later.");
+                    return Ok(());
                 }
             }
         }

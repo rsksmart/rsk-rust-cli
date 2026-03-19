@@ -40,7 +40,7 @@ impl Config {
             .iter()
             .find(|k| &k.provider == provider && k.network == network_str)
         {
-            return Some(&key.key);
+            return Some(key.key.expose());
         }
 
         // Fall back to legacy keys for backward compatibility (Alchemy only)
@@ -77,7 +77,7 @@ impl Config {
 
         // Create and add the API key
         let api_key = ApiKey {
-            key: key.clone(),
+            key: crate::utils::secrets::SecretString::new(key.clone()),
             network: network.to_string(),
             provider: provider.clone(),
             name: name.clone(),
@@ -120,7 +120,7 @@ impl ConfigManager {
     pub fn new() -> Result<Self> {
         let config_dir = dirs::config_dir()
             .context("Could not find config directory")?
-            .join("rootstock-wallet");
+            .join("rsk-rust-cli");
 
         std::fs::create_dir_all(&config_dir)?;
 
@@ -200,7 +200,7 @@ impl ConfigManager {
 
         // Clear wallet data directory
         if let Some(data_dir) = dirs::data_local_dir() {
-            let wallet_data_dir = data_dir.join("rootstock-wallet");
+            let wallet_data_dir = data_dir.join("rsk-rust-cli");
             if wallet_data_dir.exists() {
                 // Remove all files in the wallet data directory
                 for entry in fs::read_dir(&wallet_data_dir)? {

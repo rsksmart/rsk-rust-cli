@@ -1,35 +1,86 @@
 use crate::{
+    commands::{tokens::TokenRegistry, transfer::TransferCommand},
     config::ConfigManager,
-    types::{network::Network, wallet::WalletData},
-    utils::constants,
+    types::wallet::WalletData,
+    utils::{constants, secrets::SecretPassword},
 };
 use anyhow::{Result, anyhow};
-use dialoguer::{Confirm, Input};
-use alloy::{
-    primitives::{Address, U256},
-    providers::{Provider, ProviderBuilder},
-    signers::local::PrivateKeySigner,
-    network::TransactionBuilder,
-};
+use dialoguer::{Confirm, Input, Select};
+use alloy::primitives::Address;
 use serde::Deserialize;
-use std::{fs, sync::Arc};
+use std::fs;
 
 #[derive(Debug, Clone)]
 struct Transfer {
     to: Address,
-    value: U256,
+    value: String, // Keep as string to avoid precision loss
+    token_address: Option<String>,
+    token_symbol: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct TransferInput {
     to: String,
     value: String,
+    token: Option<String>, // Optional token address for JSON input
 }
 
 /// Interactive menu for bulk token transfers
 pub async fn bulk_transfer() -> Result<()> {
     println!("\n💸 Bulk Token Transfer");
     println!("=====================");
+
+    // Load config to get network
+    let config_manager = ConfigManager::new()?;
+    let config = config_manager.load()?;
+    let network = config.default_network.to_string().to_lowercase();
+
+    // Load token registry
+    let registry = TokenRegistry::load().unwrap_or_default();
+    let mut tokens = registry.list_tokens(Some(&network));
+
+    // Add RBTC as the first option
+    tokens.insert(
+        0,
+        (
+            "RBTC (Native)".to_string(),
+            crate::commands::tokens::TokenInfo {
+                address: "0x0000000000000000000000000000000000000000".to_string(),
+                decimals: 18,
+            },
+        ),
+    );
+
+    if tokens.is_empty() {
+        return Err(anyhow!("No tokens found for {} network", network));
+    }
+
+    // Let user select token
+    let token_choices: Vec<String> = tokens.iter().map(|(name, _)| name.clone()).collect();
+    let selected_token_name = Select::new()
+        .with_prompt("Select token to send:")
+        .items(&token_choices)
+        .interact()?;
+
+    let selected_token_name = &token_choices[selected_token_name];
+
+    let (_, selected_token) = tokens
+        .into_iter()
+        .find(|(name, _)| name == selected_token_name)
+        .ok_or_else(|| anyhow!("Selected token not found"))?;
+
+    // Extract token symbol from display name
+    let token_symbol = selected_token_name
+        .split_whitespace()
+        .next()
+        .unwrap_or("UNKNOWN")
+        .to_string();
+        
+    let token_address = if selected_token.address == "0x0000000000000000000000000000000000000000" {
+        None
+    } else {
+        Some(selected_token.address.clone())
+    };
 
     // Load wallet data
     let wallet_file = constants::wallet_file_path();
@@ -45,39 +96,18 @@ pub async fn bulk_transfer() -> Result<()> {
         .get_current_wallet()
         .ok_or_else(|| anyhow!("No active wallet found. Please select a wallet first."))?;
 
-    // Load config
-    let config_manager = ConfigManager::new()?;
-    let config = config_manager.load()?;
+    // Prompt for password once at the beginning and validate it
+    let password = SecretPassword::new(rpassword::prompt_password("Enter password for the wallet: ")?);
 
-    // Get the network configuration
-    let network_config = config.default_network.get_config();
-
-    // Get the chain ID based on the network
-    let chain_id = match config.default_network {
-        Network::RootStockMainnet => 30,
-        Network::RootStockTestnet => 31,
-        Network::Mainnet => 30,
-        Network::Testnet => 31,
-        Network::Regtest => 1337,
-        _ => return Err(anyhow!("Unsupported network for bulk transfers")),
-    };
-
-    // Prompt for password to decrypt the private key
-    let password = rpassword::prompt_password("Enter password for the wallet: ")?;
-
-    // Decrypt the private key
-    let private_key = current_wallet.decrypt_private_key(&password)?;
-
-    // Create a wallet
-    let wallet = private_key
-        .parse::<PrivateKeySigner>()
-        .map_err(|e| anyhow!("Failed to parse private key: {}", e))?;
-
-    // Create a provider with the network RPC URL
-    let provider = ProviderBuilder::new()
-        .on_http(network_config.rpc_url.parse()?);
-
-    let client = Arc::new(provider);
+    // Validate password by trying to decrypt
+    match current_wallet.decrypt_private_key(&password) {
+        Ok(_) => {
+            println!("✅ Password validated successfully");
+        }
+        Err(_) => {
+            return Err(anyhow!("Incorrect password. Please try again."));
+        }
+    }
 
     // Ask if user wants to use a file or manual input
     let use_file = Confirm::new()
@@ -104,10 +134,15 @@ pub async fn bulk_transfer() -> Result<()> {
                     .to
                     .parse::<Address>()
                     .map_err(|e| anyhow!("Invalid address {}: {}", input.to, e))?;
-                let value_wei = parse_amount(&input.value)?;
+                
+                // Use token from JSON or default to selected token
+                let transfer_token_address = input.token.or_else(|| token_address.clone());
+                
                 Ok(Transfer {
                     to: to_addr,
-                    value: value_wei,
+                    value: input.value,
+                    token_address: transfer_token_address,
+                    token_symbol: token_symbol.clone(),
                 })
             })
             .collect::<Result<Vec<_>>>()?
@@ -138,7 +173,7 @@ pub async fn bulk_transfer() -> Result<()> {
                     if input.starts_with("0x") && input.len() == 42 {
                         Ok(())
                     } else {
-                        Err("Please enter a valid rBTC address starting with 0x".to_string())
+                        Err("Please enter a valid address starting with 0x".to_string())
                     }
                 })
                 .interact()?;
@@ -148,12 +183,15 @@ pub async fn bulk_transfer() -> Result<()> {
                 .map_err(|e| anyhow!("Invalid address: {}", e))?;
 
             let amount: String = Input::new()
-                .with_prompt("Amount to send (e.g., 1.0)")
+                .with_prompt(&format!("Amount of {} to send (e.g., 1.0)", token_symbol))
                 .interact()?;
 
-            let value = parse_amount(&amount)?;
-
-            transfers.push(Transfer { to, value });
+            transfers.push(Transfer { 
+                to, 
+                value: amount,
+                token_address: token_address.clone(),
+                token_symbol: token_symbol.clone(),
+            });
         }
         transfers
     };
@@ -161,35 +199,19 @@ pub async fn bulk_transfer() -> Result<()> {
     // Show summary
     println!("\n📋 Transaction Summary:");
     println!("====================");
-    let total = transfers.iter().fold(U256::ZERO, |acc, t| acc + t.value);
 
     for (i, transfer) in transfers.iter().enumerate() {
         println!(
-            "{:2}. To: {} - Amount: {} rBTC",
+            "{:2}. To: {} - Amount: {} {}",
             i + 1,
             transfer.to,
-            format_eth(transfer.value)
+            transfer.value,
+            transfer.token_symbol
         );
     }
 
-    println!("\nTotal to send: {} rBTC", format_eth(total));
-
-    // Get current gas price
-    let gas_price = client.get_gas_price().await?;
-    println!("Current gas price: {} Gwei", format_gwei(U256::from(gas_price)));
-
-    // Estimate gas cost (21,000 gas per basic transfer)
-    let gas_per_tx = U256::from(21000u64);
-    let total_gas = gas_per_tx
-        .checked_mul(U256::from(transfers.len()))
-        .unwrap_or_default();
-    let total_gas_cost = total_gas.checked_mul(U256::from(gas_price)).unwrap_or_default();
-
-    println!("Estimated gas cost: {} rBTC", format_eth(total_gas_cost));
-    println!(
-        "Total cost (amount + gas): {} rBTC",
-        format_eth(total + total_gas_cost)
-    );
+    println!("\nToken: {}", token_symbol);
+    println!("Total transactions: {}", transfers.len());
 
     // Confirm before sending
     let confirm = Confirm::new()
@@ -202,47 +224,34 @@ pub async fn bulk_transfer() -> Result<()> {
         return Ok(());
     }
 
-    // Send transactions
+    // Send transactions using TransferCommand
     println!("\n🚀 Sending transactions...");
 
     let mut successful = 0;
     let mut failed = 0;
 
-    for (i, transfer) in transfers.clone().into_iter().enumerate() {
-        print!("Sending {}/{}... ", i + 1, transfers.clone().len());
+    for (i, transfer) in transfers.iter().enumerate() {
+        print!("Sending {}/{}... ", i + 1, transfers.len());
 
-        use alloy::rpc::types::TransactionRequest;
-        let tx = TransactionRequest::default()
-            .with_to(transfer.to)
-            .with_value(transfer.value)
-            .with_gas_limit(gas_per_tx.try_into().unwrap_or(0u64))
-            .with_gas_price(gas_price.try_into().unwrap_or(0u128));
+        let transfer_cmd = TransferCommand {
+            address: format!("{:?}", transfer.to),
+            value: transfer.value.clone(),
+            token: transfer.token_address.clone(),
+        };
 
-        match client.send_transaction(tx).await {
-            Ok(pending_tx) => {
-                let tx_hash = pending_tx.tx_hash();
-                match client.get_transaction_receipt(*tx_hash).await {
-                    Ok(Some(receipt)) => {
-                        if receipt.status() {
-                            println!("✅ Success! Tx: {:?}", receipt.transaction_hash);
-                            successful += 1;
-                        } else {
-                            println!("❌ Failed! Tx: {:?}", receipt.transaction_hash);
-                            failed += 1;
-                        }
-                    }
-                    Ok(None) => {
-                        println!("❌ Transaction was dropped from the mempool");
-                        failed += 1;
-                    }
-                    Err(e) => {
-                        println!("❌ Error: {}", e);
-                        failed += 1;
-                    }
-                }
+        match transfer_cmd.execute_with_password(Some(password.expose())).await {
+            Ok(result) => {
+                println!("✅ Success! Tx: {:?}", result.tx_hash);
+                successful += 1;
             }
             Err(e) => {
-                println!("❌ Failed to send transaction: {}", e);
+                // Check if it's a password error and provide better message
+                let error_msg = if e.to_string().contains("Incorrect password") {
+                    "Incorrect password entered"
+                } else {
+                    &e.to_string()
+                };
+                println!("❌ Failed: {}", error_msg);
                 failed += 1;
             }
         }
@@ -257,63 +266,10 @@ pub async fn bulk_transfer() -> Result<()> {
     println!("✅ Successful: {}", successful);
     println!("❌ Failed: {}", failed);
 
+    // password is automatically zeroized when it goes out of scope
+
     Ok(())
 }
 
-/// Parse amount string (e.g., "1.0" or "0.5") into wei
-fn parse_amount(amount: &str) -> Result<U256> {
-    let parts: Vec<&str> = amount.split('.').collect();
-    match parts.len() {
-        1 => {
-            // Whole number
-            let whole = parts[0]
-                .parse::<u64>()
-                .map_err(|_| anyhow!("Invalid amount: {}", amount))?;
-            Ok(U256::from(whole) * U256::from(10u128).pow(U256::from(18)))
-        }
-        2 => {
-            // With decimal part
-            let whole = parts[0]
-                .parse::<u64>()
-                .map_err(|_| anyhow!("Invalid amount: {}", amount))?;
-            let decimals = parts[1];
-            let decimals = if decimals.len() > 18 {
-                &decimals[..18]
-            } else {
-                decimals
-            };
 
-            let decimal_part = decimals
-                .parse::<u64>()
-                .map_err(|_| anyhow!("Invalid decimal part: {}", decimals))?;
-            let decimal_places = decimals.len() as u32;
-
-            let value = U256::from(whole) * U256::from(10u128).pow(U256::from(18))
-                + U256::from(decimal_part) * U256::from(10u128).pow(U256::from(18 - decimal_places as usize));
-
-            Ok(value)
-        }
-        _ => Err(anyhow!("Invalid amount format: {}", amount)),
-    }
-}
-
-/// Format wei amount to rBTC with 6 decimal places
-fn format_eth(wei: U256) -> String {
-    let wei_str = wei.to_string();
-    let len = wei_str.len();
-
-    if len <= 18 {
-        format!("0.{:0>18}", wei_str)
-    } else {
-        let (whole, decimal) = wei_str.split_at(len - 18);
-        let decimal = &decimal[..6.min(decimal.len())]; // Show up to 6 decimal places
-        format!("{}.{}", whole, decimal)
-    }
-}
-
-/// Format wei to Gwei
-fn format_gwei(wei: U256) -> String {
-    let gwei = wei / U256::from(1_000_000_000u64);
-    format!("{} Gwei", gwei)
-}
 

@@ -3,7 +3,6 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use alloy::primitives::{Address, Bytes, B256, U64, U256};
 use alloy::providers::{Provider, ProviderBuilder};
-use alloy::transports::http::{Client, Http};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;

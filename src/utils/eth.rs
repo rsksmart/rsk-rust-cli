@@ -6,7 +6,7 @@ use alloy::primitives::{Address, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder, RootProvider};
 use alloy::signers::local::PrivateKeySigner;
 use alloy::transports::http::{Client, Http};
-use alloy::network::TransactionBuilder;
+use alloy::network::{EthereumWallet, TransactionBuilder};
 use alloy::sol;
 use std::fs;
 use std::sync::Arc;
@@ -40,11 +40,11 @@ impl EthClient {
         };
 
         let _api_key = if let Some(key) = cli_api_key {
-            wallet_data.api_key = Some(key.clone());
-            fs::write(&wallet_file, serde_json::to_string_pretty(&wallet_data)?)?;
+            wallet_data.api_key = Some(crate::utils::secrets::SecretString::new(key.clone()));
+            crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
             Some(key)
         } else {
-            wallet_data.api_key.clone()
+            wallet_data.api_key.as_ref().map(|k| k.expose().clone())
         };
 
         // Use the RPC URL from config (which defaults to public nodes)
@@ -55,7 +55,7 @@ impl EthClient {
             .private_key
             .as_ref()
             .map(|key| {
-                key.parse::<PrivateKeySigner>()
+                key.as_str().parse::<PrivateKeySigner>()
                     .map_err(|e| anyhow!("Invalid private key: {}", e))
             })
             .transpose()?;
@@ -115,7 +115,12 @@ impl EthClient {
             .map_err(|e| anyhow!("Failed to get RBTC balance: {}", e))?;
         let estimated_gas_cost = U256::from(gas_price) * U256::from(100_000);
         if rbtc_balance < estimated_gas_cost {
-            return Err(anyhow!("Insufficient RBTC for gas fees"));
+            let balance_rbtc = rbtc_balance.to::<u128>() as f64 / 1e18;
+            let gas_cost_rbtc = estimated_gas_cost.to::<u128>() as f64 / 1e18;
+            return Err(anyhow!(
+                "Insufficient RBTC for gas fees. Balance: {:.6} RBTC, Required: {:.6} RBTC", 
+                balance_rbtc, gas_cost_rbtc
+            ));
         }
         let chain_id = self.provider.get_chain_id().await?;
 
@@ -128,7 +133,12 @@ impl EthClient {
                     .await
                     .map_err(|e| anyhow!("Failed to get token balance: {}", e))?;
                 if token_balance._0 < amount {
-                    return Err(anyhow!("Insufficient token balance"));
+                    let balance_f64 = token_balance._0.to::<u128>() as f64 / 1e18;
+                    let amount_f64 = amount.to::<u128>() as f64 / 1e18;
+                    return Err(anyhow!(
+                        "Insufficient token balance. Balance: {:.6}, Required: {:.6}", 
+                        balance_f64, amount_f64
+                    ));
                 }
                 
                 use alloy::rpc::types::TransactionRequest;
@@ -150,13 +160,15 @@ impl EthClient {
                 
                 let tx = tx.with_gas_limit(gas_estimate);
                 
+                // Build transaction for signing
+                let tx_envelope = tx.build(&EthereumWallet::from(wallet.clone())).await?;
+                
                 let pending_tx = self
                     .provider
-                    .send_transaction(tx)
+                    .send_tx_envelope(tx_envelope)
                     .await
                     .map_err(|e| anyhow!("Failed to send token transaction: {}", e))?;
-                let tx_hash = pending_tx.tx_hash();
-                Ok(*tx_hash)
+                Ok(*pending_tx.tx_hash())
             }
             None => {
                 if rbtc_balance < amount + estimated_gas_cost {
@@ -180,13 +192,15 @@ impl EthClient {
                 
                 let tx = tx.with_gas_limit(gas_estimate);
                 
+                // Build transaction for signing
+                let tx_envelope = tx.build(&EthereumWallet::from(wallet.clone())).await?;
+                
                 let pending_tx = self
                     .provider
-                    .send_transaction(tx)
+                    .send_tx_envelope(tx_envelope)
                     .await
                     .map_err(|e| anyhow!("Failed to send RBTC transaction: {}", e))?;
-                let tx_hash = pending_tx.tx_hash();
-                Ok(*tx_hash)
+                Ok(*pending_tx.tx_hash())
             }
         }
     }

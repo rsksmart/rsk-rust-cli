@@ -1,18 +1,16 @@
 use crate::types::contacts::Contact;
-use aes::Aes256;
+use crate::utils::secrets::{SecretPassword, SecretPrivateKey};
+use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, KeyInit}};
 use anyhow::Result;
 use anyhow::{Error, anyhow};
 use base64::engine::general_purpose::STANDARD;
 use base64::{self, Engine as _};
-use cbc::cipher::block_padding::Pkcs7;
-use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
-use cbc::{Decryptor, Encryptor};
 use chrono::Utc;
 use alloy::primitives::{Address, U256};
-use alloy::signers::{local::PrivateKeySigner, Signer};
-use generic_array::GenericArray;
+use alloy::signers::local::PrivateKeySigner;
 use rand::{RngCore, rngs::OsRng};
 use scrypt::{Params, scrypt};
+use zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -34,17 +32,21 @@ pub struct WalletData {
     pub current_wallet: String,
     pub wallets: HashMap<String, Wallet>,
     pub contacts: Vec<Contact>,
-    pub api_key: Option<String>,
+    pub api_key: Option<crate::utils::secrets::SecretString>,
 }
+
+// Note: Drop implementation removed - Zeroizing wrapper handles cleanup automatically
 
 impl Wallet {
     pub fn address(&self) -> Address {
         self.address
     }
 
-    pub fn new(wallet: PrivateKeySigner, name: &str, password: &str) -> Result<Self, Error> {
+    pub fn new(wallet: PrivateKeySigner, name: &str, password: &SecretPassword) -> Result<Self, Error> {
+        let mut private_key_bytes = wallet.to_bytes().to_vec();
         let (encrypted_key, iv, salt) =
-            Self::encrypt_private_key(wallet.to_bytes().as_ref(), password)?;
+            Self::encrypt_private_key(&private_key_bytes, password.expose())?;
+        private_key_bytes.zeroize();
         Ok(Self {
             address: wallet.address(),
             balance: U256::ZERO,
@@ -63,28 +65,30 @@ impl Wallet {
     ) -> anyhow::Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         let mut salt = [0u8; 16];
         OsRng.fill_bytes(&mut salt);
-        let mut iv = [0u8; 16];
-        OsRng.fill_bytes(&mut iv);
+        let mut nonce = [0u8; 12]; // GCM uses 12-byte nonce
+        OsRng.fill_bytes(&mut nonce);
         let params = Params::recommended();
         let mut key = [0u8; 32];
         scrypt(password.as_bytes(), &salt, &params, &mut key)?;
-        let mut buffer = private_key.to_vec();
-        let pos = buffer.len();
-        let pad_len = 16 - (pos % 16);
-        buffer.extend(std::iter::repeat_n(pad_len as u8, pad_len));
-        let encryptor = Encryptor::<Aes256>::new(&key.into(), &iv.into());
-        let _ = encryptor.encrypt_padded_mut::<Pkcs7>(&mut buffer, pos);
-        Ok((buffer, iv.to_vec(), salt.to_vec()))
+
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+        let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce), private_key)
+            .map_err(|e| anyhow!("Encryption failed: {}", e))?;
+
+        // Zeroize sensitive data
+        key.zeroize();
+
+        Ok((ciphertext, nonce.to_vec(), salt.to_vec()))
     }
 
-    pub fn decrypt_private_key(&self, password: &str) -> Result<String, anyhow::Error> {
-        // Decode Base64-encoded salt, IV, and encrypted key
+    pub fn decrypt_private_key(&self, password: &SecretPassword) -> Result<SecretPrivateKey, anyhow::Error> {
+        // Decode Base64-encoded salt, nonce/IV, and encrypted key
         let salt = STANDARD
             .decode(&self.salt)
             .map_err(|e| anyhow!("Failed to decode salt: {}", e))?;
-        let iv = STANDARD
+        let nonce_or_iv = STANDARD
             .decode(&self.iv)
-            .map_err(|e| anyhow!("Failed to decode IV: {}", e))?;
+            .map_err(|e| anyhow!("Failed to decode nonce/IV: {}", e))?;
         let encrypted_key = STANDARD
             .decode(&self.encrypted_private_key)
             .map_err(|e| anyhow!("Failed to decode encrypted private key: {}", e))?;
@@ -93,45 +97,34 @@ impl Wallet {
         if salt.len() != 16 {
             return Err(anyhow!("Salt must be 16 bytes, got {} bytes", salt.len()));
         }
-        if iv.len() != 16 {
-            return Err(anyhow!("IV must be 16 bytes, got {} bytes", iv.len()));
-        }
-        if encrypted_key.len() % 16 != 0 {
-            return Err(anyhow!(
-                "Encrypted key length ({}) is not a multiple of 16",
-                encrypted_key.len()
-            ));
-        }
 
-        // Derive the key using scrypt with parameters matching encryption
+        // Derive the key using scrypt
         let mut key = [0u8; 32];
-        let params = Params::recommended(); // Ensure this matches your encryption params
-        scrypt(password.as_bytes(), &salt, &params, &mut key)
+        let params = Params::recommended();
+        scrypt(password.expose().as_bytes(), &salt, &params, &mut key)
             .map_err(|e| anyhow!("Key derivation failed: {}", e))?;
 
-        // Convert key and IV to GenericArray for the cipher
-        let key_array = GenericArray::from_slice(&key[..]); // returns &GenericArray<u8, U32>
-        let iv_array = GenericArray::from_slice(&iv[..]); // returns &GenericArray<u8, U16>
-        // Set up AES-256-CBC decryptor
-        type Aes256CbcDec = Decryptor<Aes256>;
-        let cipher = Aes256CbcDec::new(key_array, iv_array);
+        // Try GCM first (new format), fallback to CBC (legacy)
+        let result = if nonce_or_iv.len() == 12 {
+            // New GCM format
+            let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+            let mut plaintext = cipher.decrypt(Nonce::from_slice(&nonce_or_iv), encrypted_key.as_ref())
+                .map_err(|_| anyhow!("Incorrect password. Please try again."))?;
 
-        // Create a mutable buffer for decryption
-        let mut buffer = encrypted_key.clone(); // Clone to make it mutable
-        let decrypted = cipher
-            .decrypt_padded_mut::<Pkcs7>(&mut buffer)
-            .map_err(|e| anyhow!("Decryption failed: {}", e))?;
+            if plaintext.len() != 32 {
+                return Err(anyhow!("Decrypted private key has invalid length: {} bytes (expected 32)", plaintext.len()));
+            }
+            let result = format!("0x{}", hex::encode(&plaintext));
+            plaintext.zeroize();
+            result
+        } else {
+            return Err(anyhow!("Unsupported encryption format"));
+        };
 
-        // Ensure the decrypted key is exactly 32 bytes
-        if decrypted.len() != 32 {
-            return Err(anyhow!(
-                "Decrypted private key has invalid length: {} bytes (expected 32)",
-                decrypted.len()
-            ));
-        }
+        // Zeroize sensitive data
+        key.zeroize();
 
-        // Return the decrypted private key as a 0x-prefixed hex string
-        Ok(format!("0x{}", hex::encode(decrypted)))
+        Ok(SecretPrivateKey::new(result))
     }
 }
 

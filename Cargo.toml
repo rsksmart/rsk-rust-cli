@@ -1,5 +1,5 @@
 [package]
-name = "rootstock-wallet"
+name = "rsk-rust-cli"
 version = "0.1.0"
 edition = "2024"
 default-run = "rootstock-wallet"
@@ -32,21 +32,21 @@ zk-circuits = { path = "./zk-circuits", optional = true }
 
 
 # Alloy dependencies - successor to ethers-rs with security fixes
-alloy = { version = "0.6", features = ["full", "provider-http", "signer-local", "contract", "rpc-types", "consensus"] }
-alloy-provider = "0.6"
-alloy-signer = "0.6" 
-alloy-signer-local = "0.6"
-alloy-contract = "0.6"
-alloy-primitives = "0.6"
-alloy-rpc-types = "0.6"
-alloy-transport-http = "0.6"
-alloy-consensus = "0.6"
+alloy = { version = "0.6.4", features = ["full", "provider-http", "signer-local", "contract", "rpc-types", "consensus"] }
+alloy-provider = "0.6.4"
+alloy-signer = "0.6.4" 
+alloy-signer-local = "0.6.4"
+alloy-contract = "0.6.4"
+alloy-primitives = "0.6.4"
+alloy-rpc-types = "0.6.4"
+alloy-transport-http = "0.6.4"
+alloy-consensus = "0.6.4"
 thiserror = "2.0.12"
 clap = { version = "4.5.36", features = ["derive"] }
 k256 = "0.13.4"
 env_logger = "0.11.8"
 log = "0.4.28"
-dotenv = "0.15.0"
+dotenvy = "0.15.7"
 reqwest = { version = "0.12.15", features = ["json", "rustls-tls"] }
 colored = "3.0.0"
 tempfile = "3.20.0"
@@ -59,13 +59,14 @@ dirs = "6.0.0"
 toml = "0.9.7"
 url = "2.5.7"
 aes = "0.8.4"
+aes-gcm = "0.10.3"
 scrypt = "0.11.0"
 base64 = "0.22.1"
 rpassword = "7.4.0"
 cbc = "0.1.2"
 cipher = "0.4.4"
 typenum = "1.18.0"
-generic-array = "0.14.7"
+generic-array = "1.0"
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 console = "0.15"
 clearscreen = "4.0.2"

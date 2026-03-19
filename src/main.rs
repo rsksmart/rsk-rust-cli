@@ -1,5 +1,7 @@
-use anyhow::Result;
-use dotenv::dotenv;
+#![allow(warnings)]
+use anyhow::{Result, anyhow};
+use dotenvy::dotenv;
+use std::env;
 
 mod api;
 mod commands;

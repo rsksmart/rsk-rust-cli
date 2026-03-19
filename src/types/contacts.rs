@@ -213,11 +213,9 @@ impl Contact {
         if let Some(stats) = &self.transaction_stats {
             if let Some(last_tx) = stats.last_transaction {
                 if last_tx.timestamp() > chrono::Local::now().timestamp() {
-                    {
-                        return Err(anyhow::anyhow!(
-                            "Last transaction timestamp cannot be in the future"
-                        ));
-                    }
+                    return Err(anyhow::anyhow!(
+                        "Last transaction timestamp cannot be in the future"
+                    ));
                 }
             }
         }
