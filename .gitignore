@@ -40,3 +40,10 @@ record-demo.sh
 # Sub-crate lock files (library crates; root Cargo.lock is kept)
 zk-circuits/Cargo.lock
 zk-circuits/methods/guest/Cargo.lock
+
+.npm-cache/
+
+# Risc0
+vote_input.json
+transfer_input.json
+transfer_proof.bin
