@@ -4,7 +4,7 @@
 //! Do not define types here; add them there instead.
 
 #[cfg(feature = "zk")]
-pub use zk_circuits::types::{TransferInputs, TransferPublicOutput, VoteInputs, VotePublicOutput};
+pub use zk_circuits::types::{TransferInputs, VoteInputs};
 
 /// Circuit type selector for CLI and host-side dispatch.
 ///

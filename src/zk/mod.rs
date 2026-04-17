@@ -39,11 +39,16 @@ pub fn zk_generate_proof(
         CircuitType::Vote => {
             let input: VoteInputs = serde_json::from_slice(fc_input)
                 .map_err(|e| anyhow::anyhow!("Invalid vote input JSON: {}", e))?;
-            // Pre-flight validation.
             if input.vote_choice > 1 {
                 return Err(anyhow::anyhow!(
                     "Invalid vote choice: must be 0 (No) or 1 (Yes), got {}",
                     input.vote_choice
+                ));
+            }
+            if input.merkle_siblings.len() > 32 {
+                return Err(anyhow::anyhow!(
+                    "Merkle depth cannot exceed 32 levels, got {}",
+                    input.merkle_siblings.len()
                 ));
             }
             ExecutorEnv::builder().write(&input)?.build()?

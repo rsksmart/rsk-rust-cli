@@ -102,14 +102,27 @@ async fn handle_zk_command_inner(args: ZkArgs) -> anyhow::Result<()> {
                 CircuitType::Transfer => {
                     let inputs: TransferInputs = serde_json::from_str(&input_data)
                         .map_err(|e| anyhow::anyhow!("Invalid transfer input JSON: {}", e))?;
-                    serde_json::to_vec(&inputs)?
+                    let bytes = serde_json::to_vec(&inputs)?;
+                    if input_data.len() > bytes.len() + 100 {
+                        println!("WARNING: Input JSON significantly larger than reserialized bytes. Extra fields may have been dropped.");
+                    }
+                    bytes
                 }
                 CircuitType::Vote => {
                     let inputs: VoteInputs = serde_json::from_str(&input_data)
                         .map_err(|e| anyhow::anyhow!("Invalid vote input JSON: {}", e))?;
-                    serde_json::to_vec(&inputs)?
+                    let bytes = serde_json::to_vec(&inputs)?;
+                    if input_data.len() > bytes.len() + 100 {
+                         println!("WARNING: Input JSON significantly larger than reserialized bytes. Extra fields may have been dropped.");
+                    }
+                    bytes
                 }
             };
+
+            // [AUDIT-FIX] Pre-flight warning for demo circuits.
+            if circuit == CircuitType::Transfer {
+                println!("SECURITY WARNING: ZK balance check is demonstration only (not cryptographically binding).");
+            }
 
             // zk_generate_proof performs pre-flight validation before invoking the prover.
             let (receipt, journal) = zk_generate_proof(circuit, &input_bytes)?;
@@ -169,6 +182,7 @@ async fn handle_zk_command_inner(args: ZkArgs) -> anyhow::Result<()> {
                  \n\
                  For the voting demo, use src/bin/demo_voting.rs instead."
             );
+            return Err(anyhow::anyhow!("zk-bridge is not yet implemented"));
         }
     }
     Ok(())
@@ -197,19 +211,20 @@ fn verify_public_inputs(
                     journal.len()
                 ));
             }
-            // Journal layout: [vote_hash: bytes32][nullifier: bytes32]
-            let vote_choice = journal[31]; // last byte of voteHash word
+            // Journal layout: [merkle_root: bytes32][nullifier: bytes32]
+            let merkle_root_hex = hex::encode(&journal[0..32]);
             let nullifier_hex = hex::encode(&journal[32..64]);
 
             let expected: serde_json::Value = serde_json::from_str(&expected_json)
                 .map_err(|e| anyhow::anyhow!("Invalid expected JSON: {}", e))?;
 
-            if let Some(expected_choice) = expected.get("vote_choice").and_then(|v| v.as_u64()) {
-                if expected_choice as u8 != vote_choice {
+            if let Some(expected_root) = expected.get("merkle_root").and_then(|v| v.as_str()) {
+                let normalized = expected_root.trim_start_matches("0x");
+                if normalized != merkle_root_hex {
                     return Err(anyhow::anyhow!(
-                        "vote_choice mismatch: expected {}, journal has {}",
-                        expected_choice,
-                        vote_choice
+                        "merkle_root mismatch: expected {}, journal has {}",
+                        expected_root,
+                        merkle_root_hex
                     ));
                 }
             }
