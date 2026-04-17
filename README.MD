@@ -5,13 +5,12 @@
 
 # Rootstock Rust CLI
 
-A command-line interface (CLI) tool written in Rust for interacting with the Rootstock (Rootstock) blockchain.  
+A command-line interface (CLI) tool written in Rust for interacting with the Rootstock blockchain.  
 This tool provides comprehensive functionality to connect to an Ethereum-compatible RPC endpoint and manage wallets, query balances, send transactions, and interact with the Rootstock network.
 
 ## Features
 
 ### Wallet Management
-
 - Create new wallets with custom names
 - Import existing wallets using private keys
 - Switch between multiple wallets
@@ -19,18 +18,18 @@ This tool provides comprehensive functionality to connect to an Ethereum-compati
 - List all available wallets
 - Rename or delete wallets
 
-### Carry out basic zk-proving and verifying with noir
-- 
+### Zero-Knowledge Privacy (Risc0)
+- **Private Voting**: Additively homomorphic encryption (ElGamal) to hide vote choices while allowing on-chain tallying.
+- **Anonymous Transfers**: Proof of balance and ownership without revealing identities (Demonstration Only).
+- **Proof Verification**: Verify ZK proofs locally or on the Rootstock network.
 
 ### Asset Management
-
 - Check RBTC balance for any address
 - View token balances (supports all ERC-20 tokens)
 - Add custom tokens to your wallet
 - Remove unwanted tokens from your token list
 
 ### Transactions
-
 - Send RBTC to any address
 - Transfer ERC-20 tokens
 - View transaction history with filtering options
@@ -38,305 +37,345 @@ This tool provides comprehensive functionality to connect to an Ethereum-compati
 - Bulk transfer functionality
 
 ### Contact Management
-
-- Save frequently used addresses as contacts
-- Add notes and tags to contacts
-- Search through your contacts
-- Update or remove existing contacts
+- Save addresses as contacts with notes and tags
+- Search, update, and manage your address book
 - Import/export contact lists
 
 ### Network & Configuration
-
 - Switch between Mainnet and Testnet
 - Configure custom RPC endpoints
-- Manage API keys with validation for Rootstock networks
-- View network status and connection details
-- Offline functionality for wallet and contact management
+- Manage API keys (Alchemy/Rootstock)
+- Built-in diagnostics (`config doctor`)
 
 ## 🛠️ Installation
 
 ### Prerequisites
-
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
-- [Git](https://git-scm.com/)
-- [Cargo](https://doc.rust-lang.org/cargo/) (comes with Rust)
+- [Risc0 Toolchain (`rzup`)](https://risczero.com/install):
+  ```bash
+  curl -L https://risczero.com/install | bash
+  rzup install
+  ```
 
 ### Building from Source
-
 1. Clone the repository:
-
    ```bash
    git clone https://github.com/rsksmart/rsk-rust-cli.git
    cd rsk-rust-cli
    ```
 
 2. Build the project:
-
    ```bash
    cargo build --release
    ```
 
 3. Run the application:
-
    ```bash
-   # For development
-   cargo run
-   
-   # For production
-   ./target/release/rsk-rust-cli
+   ./target/release/rootstock-wallet
    ```
-
-## ⚙️ Configuration
-
-The wallet automatically handles configuration through an interactive setup wizard when you first run it. You can also manage your configuration at any time using the interactive menu:
-
-## 🎮 Usage
-
-### Interactive Mode
-
-The wallet features an intuitive interactive interface. Simply run:
-
-```bash
-cargo run
-```
 
 ## 🔐 ZK-SNARK Privacy Extensions
 
-This SDK now includes support for ZK-SNARK privacy features using Risc0.
+This CLI uses [Risc0](https://dev.risczero.com/) to generate and verify zero-knowledge proofs inside a RISC-V zkVM. Two circuits are provided: a privacy-preserving **vote** circuit and a demonstration **transfer** circuit.
 
-### Features
-- **Zero-Knowledge Proof Generation**: Create proofs for private transactions and voting.
-- **Verification**: Verify proofs locally or on-chain.
-- **Private Voting Demo**: End-to-end example of a confidential voting system.
+### Building with ZK Support
 
-### Requirements & Setup
+ZK features are behind an optional Cargo feature flag. You must also have the Risc0 RISC-V toolchain installed.
 
-To run the ZK-SNARK features and the Private Voting Demo, you need the following:
-
-1.  **Risc0 Toolchain (`rzup`)**:
-    The ZK circuits are built using Risc0. You must install the `rzup` toolchain installer:
-    ```bash
-    curl -L https://risczero.com/install | bash
-    rzup install
-    ```
-
-2.  **Environment Variables**:
-    Create a `.env` file in the root directory or export these variables:
-    ```bash
-    # Your Private Key (Must have RBTC on RSK Testnet for gas)
-    export PRIVATE_KEY="your_private_key_here"
-
-    # Deployed Address of 'PrivateVoting.sol' (see contracts/)
-    export CONTRACT_ADDRESS="0x..."
-    ```
-
-3.  **RSK Testnet Funds**:
-    Get RBTC from the [RSK Testnet Faucet](https://faucet.rsk.co/).
-
-### Usage
-
-**1. Generate a Proof (CLI):**
 ```bash
-cargo run -- zk generate --circuit transfer --input input.json --output proof.bin
+# Install Risc0 toolchain (one-time)
+curl -L https://risczero.com/install | bash
+rzup install
+
+# Build with ZK enabled
+cargo build --features zk
+
+# Run all ZK integration tests (mock prover, ~10s)
+RISC0_DEV_MODE=1 cargo test --features zk
 ```
 
-**2. Verify a Proof (CLI):**
-```bash
-cargo run -- zk verify --circuit transfer --proof proof.bin
+---
+
+### Circuit 1: Private Voting (Homomorphic ElGamal)
+
+#### Architecture: host-side ElGamal + ZK nullifier
+
+The system splits responsibilities between the **ZK circuit** (fast, RISC-V) and the **host** (native Rust):
+
+| Component | Responsibility |
+|-----------|---------------|
+| **ZK circuit (guest)** | Prove `vote_choice ∈ {0,1}` and compute nullifier via SHA-256 |
+| **Host (native Rust)** | Compute ElGamal ciphertext `(C1, C2)` on BN254 — milliseconds |
+| **Smart contract** | Verify ZK proof, check nullifier, add `(C1, C2)` to homomorphic tally |
+
+**Why the split?** Risc0 v1.x has no BN254 precompile. Software-emulated BN254 scalar multiplication inside the RISC-V zkVM takes 2–5 minutes per proof. SHA-256 has a hardware accelerator in the zkVM and completes in seconds. Risc0 v2.x adds BN254 precompile support; upgrading would allow moving ElGamal back into the circuit for full cryptographic binding between the proof and the ciphertext.
+
+#### How it works
+
+```
+C1 = g^r          (randomised commitment; r = fresh CSPRNG scalar)
+C2 = Y^r + g^v   (encrypted ballot: v=0 No, v=1 Yes; Y = election public key)
 ```
 
-**3. Run Private Voting Demo:**
-This demo generates a ZK proof of a valid vote locally and submits it to the `PrivateVoting` smart contract on RSK Testnet.
+The smart contract accumulates votes by adding ciphertexts homomorphically via the `alt_bn128_add` precompile — it **never** decrypts individual votes. A nullifier (SHA-256 of voter ID + 32-byte secret) prevents double-voting.
 
-*Prerequisite*: Deploy `contracts/PrivateVoting.sol` to RSK Testnet (e.g., using [Remix](https://remix.ethereum.org/)).
-**Note**: Constructor arguments `_merkleRoot` and `_imageId` can be set to `0x0000000000000000000000000000000000000000000000000000000000000000` (32 bytes of zeros) for this demo.
+#### Privacy guarantees
 
-```bash
-# Ensure env vars are set
-source .env
+| What is hidden | What is public |
+|----------------|----------------|
+| Voter identity | Nullifier (unlinkable to voter without the secret) |
+| Randomness `r` | Encrypted ciphertext `(C1, C2)` |
+| — | Aggregate homomorphic tally (decryptable only by election authority) |
 
-# Run the demo
-cargo run --bin demo_voting
+> **Note (Risc0 v1.x limitation):** The ZK proof proves `vote_choice ∈ {0,1}` but does not cryptographically bind the ciphertext `(C1, C2)` to the proof — ElGamal is computed by the host, not inside the circuit. This means a malicious prover could supply a mismatched ciphertext. For demo and testnet use this is acceptable; production deployments should upgrade to Risc0 v2.x.
+
+#### ZK journal layout (64 bytes)
+
+```
+bytes  0..32  merkle_root — SHA-256 Merkle root of the eligible voter set
+bytes 32..64  nullifier   — SHA-256("nullifier-v1" || voter_id_be32 || secret_be256)
 ```
 
-**Optional: Deploy locally with Foundry**
-If you have `foundry` installed, you can deploy the contract directly:
-```bash
-source .env
+`vote_choice` is validated privately inside the ZK circuit (proved to be 0 or 1) but is **not** committed to the journal, preserving ballot secrecy. The ElGamal ciphertext `(C1, C2)` — passed as separate `uint256` parameters — encodes the choice in encrypted form for the homomorphic tally.
 
+On-chain Solidity — journal decoding:
+```solidity
+// journal.length must be 64
+bytes32 journalMerkleRoot;
+bytes32 nullifier;
+assembly {
+    journalMerkleRoot := calldataload(journal.offset)
+    nullifier         := calldataload(add(journal.offset, 32))
+}
+require(journalMerkleRoot == proposals[proposalId].merkleRoot, "Voter not in eligible set");
+require(!nullifiers[nullifier], "Double voting detected");
+```
+
+#### Merkle voter registration
+
+Voters are registered via a SHA-256 Merkle tree committed on-chain with the proposal. The circuit proves the voter is in the eligible set without revealing which voter voted.
+
+**Leaf hash**: `SHA-256("voter-leaf-v1" || voter_id_be32)`
+**Node hash**: `SHA-256("voter-node-v1" || left_child_bytes32 || right_child_bytes32)`
+
+- **Single-voter (depth 0)**: `merkle_root = leaf_hash(voter_id)`, `merkle_siblings = []`, `merkle_path_index = 0`
+- **Multi-voter (depth N)**: build the tree off-chain; supply the N sibling hashes along the path from leaf to root; `merkle_path_index` is a bitmask where bit `i = 1` means the voter is the right child at level `i`
+
+#### Input JSON schema
+
+```json
+{
+  "voter_id": 12345,
+  "vote_choice": 1,
+  "secret": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32],
+  "merkle_root": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  "merkle_siblings": [],
+  "merkle_path_index": 0
+}
+```
+
+- `vote_choice`: `0` = No, `1` = Yes (any other value is rejected before proving)
+- `secret`: 32 random bytes — must be CSPRNG-generated; protects the nullifier from brute-force
+- `merkle_root`: 32-byte SHA-256 Merkle root matching the on-chain proposal's registered root
+- `merkle_siblings`: array of 32-byte sibling hashes along the Merkle path (empty for single-voter)
+- `merkle_path_index`: bitmask; bit `i` indicates voter is right child at tree level `i`
+
+#### Generate and verify a vote proof locally
+
+```bash
+# 1. Compute the leaf hash for voter_id=42 (matches the circuit's leaf_hash function):
+#    SHA-256("voter-leaf-v1" || 0x0000002a)
+#    For depth-0 (single voter): merkle_root == leaf_hash
+
+# 2. Create an input file (depth-0: single eligible voter)
+cat > vote_input.json << 'EOF'
+{
+  "voter_id": 42,
+  "vote_choice": 1,
+  "secret": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32],
+  "merkle_root": [65,196,124,222,241,25,60,2,194,133,43,150,154,86,255,251,251,152,138,194,199,32,137,193,21,43,138,40,163,2,185,90],
+  "merkle_siblings": [],
+  "merkle_path_index": 0
+}
+EOF
+
+# 3. Generate the proof (produces a 64-byte journal: merkle_root + nullifier)
+RISC0_DEV_MODE=1 cargo run --features zk -- zk generate \
+  --circuit vote \
+  --input vote_input.json \
+  --output proof.bin
+
+# 4. Verify the proof
+RISC0_DEV_MODE=1 cargo run --features zk -- zk verify \
+  --circuit vote \
+  --proof proof.bin
+
+# 5. (Optional) Assert specific public outputs
+cat > expected.json << 'EOF'
+{
+  "merkle_root": "<64-char hex from step 3 output>",
+  "nullifier": "<64-char hex from step 3 output>"
+}
+EOF
+RISC0_DEV_MODE=1 cargo run --features zk -- zk verify \
+  --circuit vote \
+  --proof proof.bin \
+  --public-input expected.json
+```
+
+#### End-to-end on-chain demo (RSK Testnet)
+
+**Prerequisites**: RBTC on RSK Testnet, Foundry installed.
+
+```bash
+# 1. Set environment variables
+export PRIVATE_KEY="your_private_key_hex_no_0x"
+
+# 2. Deploy MockVerifier + PrivateVoting
+#    MockVerifier always returns true (blocked on mainnet chain ID 30; testnet chain ID 31 is allowed)
+forge create contracts/MockVerifier.sol:MockVerifier \
+  --rpc-url https://public-node.testnet.rsk.co \
+  --private-key $PRIVATE_KEY
+# Note the deployed address as VERIFIER_ADDRESS
+
+#    PrivateVoting: pass the VOTE_ID image ID (bytes32) + verifier address
+#    VOTE_ID is the Risc0 Image ID, which can be found in the build artifacts
+#    or by running `cargo run --features zk -- zk verify` with an existing proof.
 forge create contracts/PrivateVoting.sol:PrivateVoting \
-  --broadcast \
   --rpc-url https://public-node.testnet.rsk.co \
   --private-key $PRIVATE_KEY \
-  --constructor-args 0x0000000000000000000000000000000000000000000000000000000000000000 0x0000000000000000000000000000000000000000000000000000000000000000
+  --constructor-args <VOTE_IMAGE_ID_BYTES32> <VERIFIER_ADDRESS>
+# Note the deployed address as CONTRACT_ADDRESS
+
+# 3. Run the demo — creates a proposal, generates a proof, casts a vote on-chain
+export CONTRACT_ADDRESS="<CONTRACT_ADDRESS from above>"
+RISC0_DEV_MODE=1 cargo run --features zk --bin demo_voting
+
+# 4. (Optional) Skip proposal creation and vote on an existing open proposal
+export PROPOSAL_ID=0
+RISC0_DEV_MODE=1 cargo run --features zk --bin demo_voting
 ```
 
-## Demo
+The demo:
+1. Builds a depth-0 Merkle tree for `voter_id=12345` (root = leaf hash); registers it via `createProposal()` + `openProposal()`
+2. Generates a fresh 32-byte secret via CSPRNG
+3. Proves SHA-256 Merkle membership + nullifier derivation inside the zkVM (completes in seconds)
+4. Computes ElGamal ciphertext `(C1, C2)` in native Rust (milliseconds); validates the public key is on the BN254 curve and in the correct subgroup
+5. Estimates gas dynamically (`eth_estimateGas` + 20% buffer); simulates before broadcasting
+6. Submits the 64-byte journal + proof seal + ciphertext to `PrivateVoting.castVote()` on RSK Testnet
+7. The contract: verifies the ZK proof, checks the journal merkle_root matches the proposal, marks the nullifier (double-vote prevention), and homomorphically adds `(C1, C2)` to the running tally
 
+> **Proposal lifecycle**: Created → Open (voting active) → Closed → Tallied. Only the admin (deployer wallet) can advance through states. Anyone may close a proposal once its deadline has passed.
 
-### First Time Setup
+> **Note on verifiers**: `MockVerifier` always returns `true`. For production, deploy `RiscZeroGroth16Verifier` (from [risc0-ethereum](https://github.com/risc0/risc0-ethereum)) and pass its address as `_verifier`. Wrap proofs with Groth16 via `RISC0_PROVER=groth16` (requires `rzup install groth16`) to produce compact ~256-byte seals compatible with on-chain verification.
 
-[![First Time Setup](https://asciinema.org/a/V8Qf1AboSZu08l12KJFxTfyeV.svg)](https://asciinema.org/a/V8Qf1AboSZu08l12KJFxTfyeV)
+> **Risc0 v1.x limitation**: The ZK proof does not cryptographically bind the ElGamal ciphertext `(C1, C2)` to the proof — ElGamal is computed by the host, not inside the circuit. Risc0 v2.x adds a BN254 precompile that would allow full cryptographic binding.
 
-### Importing Existing Wallet
+---
 
-[![Importing Existing Wallet](https://asciinema.org/a/cVrvEOP4LvJQLvTitxcayRBFt.svg)](https://asciinema.org/a/cVrvEOP4LvJQLvTitxcayRBFt)
-### 📋 Individual Feature Demos
+### Circuit 2: Anonymous Transfer (Demonstration Only)
 
-For detailed walkthroughs of specific features:
+> [!WARNING]
+> `sender_balance` is a **private input** supplied by the prover and is NOT cryptographically bound to any on-chain state (no Merkle root, no commitment scheme). This circuit is **demonstration only** — do not use it for production DeFi. A production implementation must bind the balance to an on-chain commitment that the verifier can check.
 
-### First Time Setup
+The transfer circuit proves that a sender knows a balance ≥ amount, without revealing the sender/receiver identities. A commitment anchors the specific transfer.
 
-[![First Time Setup](https://asciinema.org/a/lbHMriiOt5ZNfpyP3LnjCRJ6e.svg)]( https://asciinema.org/a/lbHMriiOt5ZNfpyP3LnjCRJ6e)
+#### ZK journal layout (64 bytes)
 
-### Wallet Features
+```
+bytes  0..32  amount     — u64 right-aligned in a bytes32 word (EVM convention)
+bytes 32..64  commitment — SHA-256("transfer-commitment-v1" || sender_id_be || receiver_id_be || nonce_be)
+```
 
-Create Wallet, Importing Existing Wallet, List Wallets, Switch Wallets, Delete Wallet & Rename Wallet
-[![Importing Existing Wallet](https://asciinema.org/a/BoPr2TFlggYem2b1zhhEzS52X.svg)](https://asciinema.org/a/BoPr2TFlggYem2b1zhhEzS52X)
+#### Input JSON schema
 
-### Check Balance of RBTC and ERC-20 Tokens
+```json
+{
+  "sender_balance": 1000,
+  "amount": 100,
+  "sender_id": 1,
+  "receiver_id": 2,
+  "nonce": 42
+}
+```
 
-Check your RBTC and ERC-20 token balances (e.g., RIF).
-
-[![Check Balance](https://asciinema.org/a/ChSOgxrI2VXuA5Yq6Q0Jgc2nI.svg)](https://asciinema.org/a/ChSOgxrI2VXuA5Yq6Q0Jgc2nI
-)
-
-### Send Funds
-
-Transfer RBTC from one wallet to another (e.g., from personal to lock wallet).
-[![Send Funds](https://asciinema.org/a/dZTXi9OFBD2npbMpjfA68INX3.svg)](https://asciinema.org/a/dZTXi9OFBD2npbMpjfA68INX3
-)
-[View example transaction on explorer](https://explorer.testnet.rootstock.io/tx/c77c5bf53d1492bcf88104a746ca7a21f65add08f92dc0f9cad35db0a97886b0
-)
-
-### Set API Key
-
-Configure and validate your API key for accessing transaction history and status checking.
-[![Set API Key](https://asciinema.org/a/LPdZYLNWcCK0feJyvcXDFZSXn.svg)](https://asciinema.org/a/LPdZYLNWcCK0feJyvcXDFZSXn)
-
-### Transaction History(make sure alchemy api key is set)
-
-[![Set API Key](https://asciinema.org/a/Sh7qW67bHkDz0KGSjiqBLc8JC.svg)](https://asciinema.org/a/Sh7qW67bHkDz0KGSjiqBLc8JC)
-
-### Check Transaction Status
-
-[![Check Transaction Status](https://asciinema.org/a/jwQkdPRDSaUx8WC61ZNb8RnJ5.svg)](https://asciinema.org/a/jwQkdPRDSaUx8WC61ZNb8RnJ5)
-
-You can also view it at [View Transaction](https://explorer.testnet.rsk.co/tx/c77c5bf53d1492bcf88104a746ca7a21f65add08f92dc0f9cad35db0a97886b0)
-
-### Bulk Transfer
-
-Send multiple transactions at once.
-[![Bulk Transfer](https://asciinema.org/a/AC39AUnt9U0ih5MDUWltPdJWV.svg)](https://asciinema.org/a/AC39AUnt9U0ih5MDUWltPdJWV)
-
- [View Transaction 1](https://explorer.testnet.rsk.co/tx/0xfeeb73fb060f59352ff0aa99373fb502edd9702d999e8043158db18eb969ffa3) , [View Transaction 2](https://explorer.testnet.rsk.co/tx/0xbe16c77a67ee99edd492c14ca5668402d2a6a21baa39bdd2bd582ad301086951)
-
-### Token Management
-
-Add, list, and delete tokens from your wallet.
-[![Add Token](https://asciinema.org/a/H4vFOowEHUDBi9txo8PGntedp.svg)](https://asciinema.org/a/H4vFOowEHUDBi9txo8PGntedp)
-
-### Contact
-
-Add, list, and delete contacts from your address book.
-[![Add Contact](https://asciinema.org/a/q7aRPz3nUxuwopSSUFTZlNmxj.svg)](https://asciinema.org/a/q7aRPz3nUxuwopSSUFTZlNmxj)
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-#### Transaction Failures
-
-- Ensure you have enough RBTC for gas fees
-- Verify recipient address format (0x...)
-- Check network compatibility (mainnet/testnet)
-
-#### Connection Issues
-
-- Verify your internet connection
-- App automatically switches to offline mode when network unavailable
-- Limited functionality available offline (wallet management, contacts, tokens)
-
-#### API Key Issues
-
-- Ensure API key is valid for the selected network (mainnet/testnet)
-- Keys are validated against Rootstock RPC endpoints
-- Invalid keys will show clear error messages
-
-#### Wallet Issues
-
-- Confirm wallet file exists at `~/.local/share/rsk-rust-cli/`
-- Check file permissions if access is denied
-- Ensure you're using the correct network (mainnet/testnet)
-
-
-## Resources
-
-- [Rootstock Documentation](https://developers.rsk.co/)
-- [RSK Smart Contracts](https://developers.rsk.co/develop/)
-- [RSK Developer Portal](https://developers.rsk.co/)
-- [Issue Tracker](https://github.com/rsksmart/rsk-rust-cli/issues)
-
-## Security
-
-This application handles private keys and financial transactions. Security measures include:
-
-- **Encryption**: AES-256-GCM encryption for private keys with authenticated encryption
-- **File Security**: Secure file permissions (0o600) for wallet files
-- **Password Security**: Strong password validation with complexity requirements
-- **Memory Security**: Memory zeroization for sensitive data to prevent leaks
-- **Input Validation**: Comprehensive input validation and sanitization
-- **API Security**: API key validation against Rootstock networks
-- **Offline Security**: Core wallet functions available without network exposure
-
-### ⚠️ Command-Line Security Notice
-
-When using commands that require passwords or private keys as arguments, be aware that:
-
-- **Shell History**: These values may be stored in your shell history (`.bash_history`, `.zsh_history`, etc.)
-- **Process Listings**: They may be visible in process listings (`ps aux`, `top`, etc.)
-- **System Logs**: Some systems log command-line arguments
-
-**Recommended Security Practices:**
-
-1. **Use Interactive Mode**: The interactive mode prompts for sensitive data securely without exposing it in command history
-2. **Clear Shell History**: After entering sensitive commands, clear your shell history:
-   ```bash
-   history -c  # Clear current session
-   history -w  # Write empty history to file
-   ```
-3. **Use Environment Variables**: For automation, use environment variables instead of command-line arguments
-4. **Avoid Production Use**: For production environments, use secure secret management systems
-
-**Example - Secure vs Insecure:**
+#### Generate and verify a transfer proof
 
 ```bash
-# ❌ INSECURE - Password visible in history
-rsk-rust-cli wallet create myWallet myPassword123
+cat > transfer_input.json << 'EOF'
+{
+  "sender_balance": 1000,
+  "amount": 100,
+  "sender_id": 1,
+  "receiver_id": 2,
+  "nonce": 42
+}
+EOF
 
-# ✅ SECURE - Use interactive mode
-cargo run
-# Then select "Wallet Management" and follow prompts
+cargo run --features zk -- zk generate \
+  --circuit transfer \
+  --input transfer_input.json \
+  --output transfer_proof.bin
+
+cargo run --features zk -- zk verify \
+  --circuit transfer \
+  --proof transfer_proof.bin
 ```
 
-**Dependency Status:** All security vulnerabilities resolved. Minor unmaintained dependency warnings (derivative, paste) are transitive dependencies via Alloy and pose no security risk.
+---
 
-## Contributing
+### On-chain Bridge (Not Yet Implemented)
 
-We welcome contributions from the community. Please fork the repository and submit pull requests with your changes. Ensure your code adheres to the project's main objective.
+```bash
+cargo run --features zk -- zk bridge \
+  --circuit vote \
+  --proof proof.bin \
+  --contract 0x<verifier-address>
+# Returns: error: zk-bridge is not yet implemented
+```
 
-## Support
+Full implementation requires deploying `RiscZeroGroth16Verifier` on RSK and wrapping proofs with Groth16 (`rzup install groth16`).
 
-For any questions or support, please open an issue on the repository or reach out to the maintainers.
+---
 
-# Disclaimer
+### Running ZK Tests
 
-The software provided in this GitHub repository is offered "as is," without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+Both circuits use SHA-256 only in the guest. With `RISC0_DEV_MODE=1` (mock prover) all 19 tests complete in ~10 seconds.
 
-- **Testing:** The software has not undergone testing of any kind, and its functionality, accuracy, reliability, and suitability for any purpose are not guaranteed.
-- **Use at Your Own Risk:** The user assumes all risks associated with the use of this software. The author(s) of this software shall not be held liable for any damages, including but not limited to direct, indirect, incidental, special, consequential, or punitive damages arising out of the use of or inability to use this software, even if advised of the possibility of such damages.
-- **No Liability:** The author(s) of this software are not liable for any loss or damage, including without limitation, any loss of profits, business interruption, loss of information or data, or other pecuniary loss arising out of the use of or inability to use this software.
-- **Sole Responsibility:** The user acknowledges that they are solely responsible for the outcome of the use of this software, including any decisions made or actions taken based on the software's output or functionality.
-- **No Endorsement:** Mention of any specific product, service, or organization does not constitute or imply endorsement by the author(s) of this software.
-- **Modification and Distribution:** This software may be modified and distributed under the terms of the license provided with the software. By modifying or distributing this software, you agree to be bound by the terms of the license.
-- **Assumption of Risk:** By using this software, the user acknowledges and agrees that they have read, understood, and accepted the terms of this disclaimer and assumes all risks associated with the use of this software.
+```bash
+# Fast: mock prover — executes guest, captures journal, skips STARK generation (~10s)
+RISC0_DEV_MODE=1 cargo test --features zk
+
+# Full STARK proofs — produces real receipts (use before production release)
+# Run single-threaded (-j 1) to avoid resource contention between parallel provers
+cargo test --features zk -- -j 1
+
+# Build without ZK (verifies feature-gating compiles cleanly)
+cargo build
+```
+
+---
+
+## 🔍 Troubleshooting & Security
+
+### Diagnostics
+Run the diagnostic tool to check your configuration, API keys, and wallet status:
+```bash
+cargo run -- config doctor
+```
+
+### Security Measures
+- **AES-256-GCM**: authenticated encryption for wallet files.
+- **Memory Zeroization**: sensitive data (private keys) is wiped from memory using the `zeroize` crate.
+- **Homomorphic Privacy**: vote choices are ElGamal-encrypted; the contract never sees individual choices.
+- **32-byte nullifier secret**: brute-force infeasible (2²⁵⁶ keyspace); generated with CSPRNG.
+- **Mock Guards**: `MockVerifier` reverts on RSK Mainnet (chain ID 30). Use `RiscZeroGroth16Verifier` for production.
+- **CEI pattern**: `PrivateVoting.castVote()` marks the nullifier used before any external call.
+
+## Resources
+- [Rootstock Documentation](https://developers.rsk.co/)
+- [Risc0 Documentation](https://dev.risczero.com/)
+- [Issue Tracker](https://github.com/rsksmart/rsk-rust-cli/issues)
+
+## Disclaimer
+The software provided is offered "as is," without warranty of any kind. Use at your own risk. The ZK features are currently in a demonstration phase.
