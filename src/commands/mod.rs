@@ -1,5 +1,6 @@
 pub mod api;
 pub mod balance;
+pub mod config;
 pub mod contacts;
 pub mod history;
 pub mod root;

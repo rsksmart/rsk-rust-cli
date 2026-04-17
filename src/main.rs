@@ -1,7 +1,6 @@
-#![allow(warnings)]
-use anyhow::{Result, anyhow};
+// Removed blanket allow(warnings) to improve code quality and catch diagnostics.
+use anyhow::Result;
 use dotenvy::dotenv;
-use std::env;
 
 mod api;
 mod commands;
@@ -43,6 +42,9 @@ async fn main() -> Result<()> {
     match cli.command {
         Some(Commands::Zk(args)) => {
             handle_zk_command(args).await?;
+        }
+        Some(Commands::Config(cmd)) => {
+            cmd.execute().await?;
         }
         Some(_cmd) => {
             eprintln!(

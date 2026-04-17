@@ -1,4 +1,5 @@
 use crate::commands::api::SetApiKeyCommand;
+use crate::commands::config::ConfigCommand;
 use crate::commands::contacts::ContactsCommand;
 use crate::commands::tokens::{TokenAddCommand, TokenListCommand, TokenRemoveCommand};
 use crate::commands::wallet::WalletCommand;
@@ -11,6 +12,8 @@ pub enum Commands {
     Wallet(WalletCommand),
     /// Manage ZK Proofs
     Zk(ZkArgs),
+    /// Manage configuration
+    Config(ConfigCommand),
     /// Manage contacts
     Contacts(ContactsCommand),
     /// Show transaction history

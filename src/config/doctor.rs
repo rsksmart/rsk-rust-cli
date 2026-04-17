@@ -41,9 +41,21 @@ pub fn run_doctor() -> Result<()> {
 
     // Check wallet configuration
     println!("\n{}", style("💼 Wallet Configuration:").bold());
-    if let Some(wallet) = &config.default_wallet {
-        println!("  Default wallet: {}", wallet);
-        // TODO: Add wallet existence check
+    if let Some(wallet_name) = &config.default_wallet {
+        println!("  Default wallet: {}", wallet_name);
+        
+        // [AUDIT-FIX] Added wallet existence check
+        let wallet_path = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".local/share/rsk-rust-cli/wallets")
+            .join(format!("{}.json", wallet_name));
+            
+        if wallet_path.exists() {
+            println!("  {} Wallet file found", style("✓").green());
+        } else {
+            println!("  {} Wallet file NOT found at {}", style("✗").red(), wallet_path.display());
+            println!("     Run `wallet list` to see available wallets");
+        }
     } else {
         println!("  ℹ️ No default wallet set");
         println!("     Run `wallet create` to create a new wallet");

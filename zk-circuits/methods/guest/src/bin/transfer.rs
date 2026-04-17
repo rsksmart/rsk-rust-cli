@@ -3,8 +3,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 // SYNC: These types must match zk-circuits/src/types.rs exactly.
-// The integration test `test_type_sync_transfer_round_trip` in tests/zk_tests.rs
+// The integration test `test_type_sync_transfer_inputs_round_trip` in tests/zk_tests.rs
 // catches field-level mismatches via serialization round-trips.
+//
+// SECURITY WARNING (demonstration only): `sender_balance` is a private input
+// supplied by the prover and is NOT cryptographically bound to any on-chain
+// state (no Merkle root, no commitment scheme). Do not use this circuit for
+// production DeFi. A production implementation must bind the balance to an
+// on-chain commitment that the verifier can check.
 #[derive(Serialize, Deserialize)]
 pub struct TransferInputs {
     pub sender_balance: u64,
@@ -39,20 +45,17 @@ fn main() {
     hasher.update(input.nonce.to_be_bytes());
     let commitment: [u8; 32] = hasher.finalize().into();
 
-    // Construct a 40-byte journal compatible with Solidity's:
-    //   (uint64 amount, bytes32 commitment) = abi.decode(journal, (uint64, bytes32))
+    // Journal layout (64 bytes, ABI-compatible with Solidity):
     //
-    //   Bytes 0.. 8: amount     (u64 big-endian, ABI-padded to 32 bytes by Solidity)
-    //   Bytes 8..40: commitment (SHA-256 hash of transfer parties + nonce)
+    //   bytes  0..32: amount — u64 right-aligned in a bytes32 word (EVM convention)
+    //                          i.e. zero-padded at the front; amount sits at bytes[24..32]
+    //   bytes 32..64: commitment — SHA-256 hash of transfer parties + nonce
     //
-    // NOTE: Solidity's abi.decode for (uint64, bytes32) expects 64 bytes total
-    // (each slot is 32 bytes). Use manual assembly or abi.decode with uint256 cast.
-    // Alternatively decode as: uint256 amountWord = uint256(bytes32(journal[0:32]))
-    // For simpler on-chain decoding, we pad amount to 32 bytes:
+    // Solidity decoding:
+    //   uint256 amountWord = uint256(bytes32(journal[0:32]));
+    //   bytes32 commitment  = bytes32(journal[32:64]);
     let mut journal = [0u8; 64];
-    // Amount: right-aligned in first 32-byte word (big-endian, EVM convention)
     journal[24..32].copy_from_slice(&input.amount.to_be_bytes());
-    // Commitment: second 32-byte word
     journal[32..64].copy_from_slice(&commitment);
     env::commit_slice(&journal);
 }
