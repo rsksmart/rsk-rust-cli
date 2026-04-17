@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.28;
 
-import "./PrivateVoting.sol";
+import "./interfaces/IRiscZeroVerifier.sol";
 
 /// @title MockVerifier
 /// @notice A test-only IRiscZeroVerifier that always returns true.
@@ -18,7 +18,10 @@ contract MockVerifier is IRiscZeroVerifier {
         bytes calldata, /* seal */
         bytes32,        /* imageId */
         bytes32         /* journalDigest */
-    ) external pure returns (bool) {
+    ) external view returns (bool) {
+        // [AUDIT-FIX] Prevent accidental mainnet deployment. Chain 30 = RSK Mainnet.
+        // Chain 31 (RSK Testnet) is intentionally allowed for integration testing.
+        require(block.chainid != 30, "MockVerifier: mainnet deployment prohibited");
         return true;
     }
 }
