@@ -115,6 +115,7 @@ contract PrivateVoting {
 
     /// @notice Open a proposal for voting. Only the admin may call this.
     function openProposal(uint256 proposalId) external onlyAdmin {
+        require(proposalId < proposalCount, "Proposal does not exist");
         require(proposals[proposalId].state == ProposalState.Created, "Must be in Created state");
         proposals[proposalId].state = ProposalState.Open;
         emit ProposalOpened(proposalId);
@@ -123,6 +124,7 @@ contract PrivateVoting {
     /// @notice Close a proposal. Admin may close at any time; anyone may close once
     ///         the deadline has passed.
     function closeProposal(uint256 proposalId) external {
+        require(proposalId < proposalCount, "Proposal does not exist");
         Proposal storage p = proposals[proposalId];
         require(p.state == ProposalState.Open, "Must be Open");
         bool deadlinePassed = p.deadline > 0 && block.timestamp >= p.deadline;
@@ -137,6 +139,7 @@ contract PrivateVoting {
     /// In production, this should accept a ZK proof of correct ElGamal decryption
     /// so the result is verifiable on-chain without trusting the admin.
     function submitTally(uint256 proposalId) external onlyAdmin {
+        require(proposalId < proposalCount, "Proposal does not exist");
         require(proposals[proposalId].state == ProposalState.Closed, "Must be Closed");
         proposals[proposalId].state = ProposalState.Tallied;
         emit TallySubmitted(proposalId);
@@ -164,6 +167,7 @@ contract PrivateVoting {
         uint256 c2x,
         uint256 c2y
     ) external {
+        require(proposalId < proposalCount, "Proposal does not exist");
         Proposal storage p = proposals[proposalId];
         require(p.state == ProposalState.Open, "Proposal is not open for voting");
         require(p.deadline == 0 || block.timestamp < p.deadline, "Voting deadline has passed");

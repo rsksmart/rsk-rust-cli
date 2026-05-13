@@ -6,19 +6,21 @@ use alloy::sol;
 use anyhow::Result;
 use ark_bn254::{Fr, G1Affine, G1Projective};
 use ark_ec::{AffineRepr, CurveGroup, Group};
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::{BigInteger, PrimeField, Zero};
 use rand::RngCore;
+use rand::rngs::OsRng;
 use rootstock_wallet::zk::{types::VoteInputs, zk_generate_proof, CircuitType};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::ops::Mul;
 use std::str::FromStr;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 // Bind to the PrivateVoting contract ABI (full lifecycle + castVote).
 sol! {
     #[sol(rpc)]
     contract PrivateVoting {
+        function proposalCount() external view returns (uint256);
         function createProposal(bytes32 merkleRoot, uint256 deadline) external returns (uint256);
         function openProposal(uint256 proposalId) external;
         function castVote(
@@ -62,6 +64,13 @@ fn host_elgamal(
     pk_y: &[u8; 32],
 ) -> anyhow::Result<(U256, U256, U256, U256)> {
     let r = Fr::from_be_bytes_mod_order(randomness);
+    // r = 0 (mod order) means C1 = identity and C2 = g^v — leaks the vote choice.
+    // The probability is ~2^-254 with a CSPRNG, but we reject it explicitly.
+    if r.is_zero() {
+        return Err(anyhow::anyhow!(
+            "ElGamal randomness reduced to zero mod the BN254 scalar order — regenerate"
+        ));
+    }
     let g = G1Affine::generator();
     let c1 = g.mul(r).into_affine();
 
@@ -198,17 +207,13 @@ async fn main() -> Result<()> {
         println!("Creating proposal with voter Merkle root...");
 
         let gas_price = provider.get_gas_price().await?;
+
+        // Read proposalCount BEFORE sending to get a race-free ID.
+        // Using the dry-run (.call()) is racy: if another tx increments proposalCount
+        // between the simulation and the broadcast, new_id would be stale.
+        let new_id = contract.proposalCount().call().await?._0.to::<u64>();
+
         let nonce = provider.get_transaction_count(signer.address()).await?;
-
-        // Get the proposal ID from a dry-run before broadcasting.
-        let new_id = contract
-            .createProposal(merkle_root.into(), U256::ZERO)
-            .from(signer.address())
-            .call()
-            .await?
-            ._0
-            .to::<u64>();
-
         contract
             .createProposal(merkle_root.into(), U256::ZERO)
             .from(signer.address())
@@ -240,13 +245,18 @@ async fn main() -> Result<()> {
     // 6. ZK proof inputs.
     println!("\nPreparing ZK inputs for private vote...");
 
+    // Use OsRng directly rather than thread_rng() for security-critical secrets.
+    // thread_rng() is seeded from OsRng but adds an intermediate buffer; OsRng is
+    // the direct OS entropy source and avoids any risk of state duplication.
     let mut secret = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut secret);
+    OsRng.fill_bytes(&mut secret);
 
+    // ElGamal randomness scalar. Must never be reused — each vote needs a fresh r.
+    // If r reduces to 0 mod the scalar order, host_elgamal returns Err.
     let mut randomness = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut randomness);
+    OsRng.fill_bytes(&mut randomness);
 
-    let vote_input = VoteInputs {
+    let mut vote_input = VoteInputs {
         voter_id,
         vote_choice,
         secret,
@@ -254,11 +264,14 @@ async fn main() -> Result<()> {
         merkle_siblings: vec![], // depth 0: no siblings needed
         merkle_path_index: 0,
     };
+    // Raw array no longer needed; secret lives in vote_input.
+    secret.zeroize();
 
     // 7. Generate ZK proof (SHA-256 + Merkle, completes in seconds with RISC0_DEV_MODE).
     println!("Generating ZK proof (vote validity + Merkle membership)...");
     let input_bytes = serde_json::to_vec(&vote_input)?;
     let (receipt, journal) = zk_generate_proof(CircuitType::Vote, &input_bytes)?;
+
     println!(
         "Proof generated. Journal (64 bytes): {}",
         hex::encode(&journal)
@@ -278,6 +291,9 @@ async fn main() -> Result<()> {
     pub_key_y[31] = 2;
     let (c1x, c1y, c2x, c2y) =
         host_elgamal(vote_choice, &randomness, &pub_key_x, &pub_key_y)?;
+    // Zeroize sensitive material now that the proof and ciphertext are computed.
+    vote_input.secret.zeroize();
+    randomness.zeroize();
     println!("ElGamal ciphertext computed.");
 
     // 9. Extract seal (Groth16 compact if available, STARK bincode otherwise).
@@ -304,8 +320,9 @@ async fn main() -> Result<()> {
 
     let gas_limit = match call.estimate_gas().await {
         Ok(estimate) => {
-            // 20% buffer over the estimate.
-            let gas = estimate * 12 / 10;
+            // 20% buffer. Use saturating_mul to avoid u64 overflow on adversarial
+            // RPC responses; cap at 10M (well above RSK's block gas limit).
+            let gas = estimate.saturating_mul(12).saturating_div(10).min(10_000_000);
             println!("Gas estimate: {} (using {} with 20% buffer)", estimate, gas);
             gas
         }
