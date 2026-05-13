@@ -39,10 +39,17 @@ impl EthClient {
             WalletData::new()
         };
 
+        // Key resolution priority:
+        //   1. CLI --api-key argument (ephemeral, not persisted)
+        //   2. ALCHEMY_API_KEY / RSK_RPC_API_KEY env vars (preferred — never written to disk)
+        //   3. Key previously saved in wallet file (plaintext at rest, use env vars instead)
         let _api_key = if let Some(key) = cli_api_key {
-            wallet_data.api_key = Some(crate::utils::secrets::SecretString::new(key.clone()));
-            crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
+            // Ephemeral: only used for this invocation, not written to disk.
             Some(key)
+        } else if let Ok(env_key) = std::env::var("ALCHEMY_API_KEY")
+            .or_else(|_| std::env::var("RSK_RPC_API_KEY"))
+        {
+            Some(env_key)
         } else {
             wallet_data.api_key.as_ref().map(|k| k.expose().clone())
         };
