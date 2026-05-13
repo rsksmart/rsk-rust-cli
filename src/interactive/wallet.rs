@@ -1,8 +1,10 @@
 use crate::commands::wallet::{WalletAction, WalletCommand};
 use crate::utils::secrets::SecretPassword;
+use alloy::signers::local::PrivateKeySigner;
 use anyhow::Result;
 use console::style;
-use zeroize::Zeroize;
+use std::str::FromStr;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Validates password strength
 fn validate_password(password: &str) -> Result<inquire::validator::Validation, Box<dyn std::error::Error + Send + Sync>> {
@@ -113,17 +115,8 @@ pub async fn create_wallet_with_name(name: &str) -> Result<()> {
     );
 
     let secret_password = SecretPassword::new(password_str);
-    let cmd = WalletCommand {
-        action: WalletAction::Create {
-            name: name.to_string(),
-            password: secret_password.expose().to_string(), // Temporary until we can update WalletAction
-        },
-    };
-
-    let result = cmd.execute().await;
-
-    // secret_password is automatically zeroized when it goes out of scope
-
+    // Call the credential-accepting helper directly; never route through CLI args.
+    let result = crate::commands::wallet::create_wallet_with_credentials(name, &secret_password);
     result
 }
 
@@ -192,23 +185,16 @@ async fn import_wallet() -> Result<()> {
         style("⏳ Importing your wallet. This may take a few seconds...").dim()
     );
 
-    let private_key_copy = private_key.clone();
-    let secret_password = SecretPassword::new(password_str);
+    // Parse the private key, then zeroize the raw string immediately.
+    let mut raw = Zeroizing::new(private_key.trim().trim_start_matches("0x").to_string());
     private_key.zeroize();
+    let signer = PrivateKeySigner::from_str(&raw)
+        .map_err(|e| anyhow::anyhow!("Invalid private key: {}", e))?;
+    raw.zeroize();
 
-    let cmd = WalletCommand {
-        action: WalletAction::Import {
-            private_key: private_key_copy.clone(),
-            name: name.clone(),
-            password: secret_password.expose().to_string(), // Temporary until we can update WalletAction
-        },
-    };
-
-    let result = cmd.execute().await;
-
-    // Zeroize sensitive data
-    let mut private_key_copy_for_zeroize = private_key_copy;
-    private_key_copy_for_zeroize.zeroize();
+    let secret_password = SecretPassword::new(password_str);
+    // Call the credential-accepting helper directly; never route through CLI args.
+    let result = crate::commands::wallet::import_wallet_with_credentials(signer, &name, &secret_password);
 
     match result {
         Ok(_) => {

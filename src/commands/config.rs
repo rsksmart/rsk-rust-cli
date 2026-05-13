@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use console::style;
 
-use crate::config::{Config, ConfigManager, Network};
+use crate::config::{ConfigManager, Network};
 
 #[derive(Debug, Args)]
 pub struct ConfigCommand {
@@ -90,7 +90,8 @@ impl ConfigCommand {
         
         match key.to_lowercase().as_str() {
             "default-network" => {
-                let network = value.parse()?;
+                let network = Network::from_str(value)
+                    .ok_or_else(|| anyhow::anyhow!("Unknown network '{}'. Valid values: mainnet, testnet, regtest, alchemy-mainnet, alchemy-testnet, rootstock-mainnet, rootstock-testnet", value))?;
                 config.default_network = network;
                 println!("Set default network to: {}", network);
             }

@@ -32,6 +32,15 @@ pub struct WalletData {
     pub current_wallet: String,
     pub wallets: HashMap<String, Wallet>,
     pub contacts: Vec<Contact>,
+    /// API key stored as plaintext in the wallet JSON file (0o600 permissions).
+    ///
+    /// SECURITY NOTE: This field is NOT encrypted at rest. An attacker who obtains
+    /// the wallet file can read the API key. For sensitive keys prefer setting
+    /// `ALCHEMY_API_KEY` / `RSK_RPC_API_KEY` environment variables instead and
+    /// leaving this field empty — the eth client checks env vars first.
+    ///
+    /// A future version should migrate this to OS-keychain storage (`keyring` crate).
+    #[serde(rename = "api_key_plaintext", skip_serializing_if = "Option::is_none")]
     pub api_key: Option<crate::utils::secrets::SecretString>,
 }
 

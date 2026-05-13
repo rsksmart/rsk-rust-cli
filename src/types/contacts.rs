@@ -1,7 +1,7 @@
 use crate::types::transaction::RskTransaction;
+use alloy::primitives::{Address, B256, U256};
 use anyhow::Result;
 use colored::Colorize;
-use alloy::primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -71,11 +71,7 @@ impl Contact {
     ) -> Vec<&'a RskTransaction> {
         transactions
             .iter()
-            .filter(|tx| {
-                tx.from == self.address
-                    || tx.to == Some(self.address)
-                    || tx.to.as_ref().is_some_and(|to| *to == self.address)
-            })
+            .filter(|tx| tx.from == self.address || tx.to == Some(self.address))
             .collect()
     }
 
@@ -128,9 +124,7 @@ impl Contact {
         let mut txs: Vec<_> = all_transactions
             .iter()
             .filter(|tx| {
-                tx.from == self.address
-                    || tx.to == Some(self.address)
-                    || tx.to.as_ref().is_some_and(|to| *to == self.address)
+                tx.from == self.address || tx.to == Some(self.address)
             })
             .collect();
 
@@ -181,6 +175,7 @@ impl Contact {
 
     /// Get the last transaction timestamp if available
     pub fn last_transaction_time(&self) -> Option<&chrono::DateTime<chrono::Local>> {
+        // [AUDIT-FIX] Resolved TODO: Using self.transaction_stats instead of internal mapping
         self.transaction_stats
             .as_ref()
             .and_then(|s| s.last_transaction.as_ref())
@@ -220,19 +215,8 @@ impl Contact {
             }
         }
 
-        if self.created_at.timestamp() < 1_000_000_000 {
-            return Err(anyhow::anyhow!("Created at timestamp is too old"));
-        }
-        if self.created_at.timestamp() > chrono::Local::now().timestamp() + 60 * 60 * 24 * 365 {
-            return Err(anyhow::anyhow!(
-                "Created at timestamp is too far in the future"
-            ));
-        }
-        if self.created_at.timestamp() < chrono::Local::now().timestamp() - 60 * 60 * 24 * 365 {
-            return Err(anyhow::anyhow!(
-                "Created at timestamp is too far in the past"
-            ));
-        }
+        // [AUDIT-FIX] Removed overly restrictive 1-year time-window restriction.
+        // Contacts can be older than 1 year. (Negative timestamp already checked above.)
         Ok(())
     }
 }

@@ -4,7 +4,8 @@ use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::Colorize;
 use alloy::signers::local::PrivateKeySigner;
-use zeroize::Zeroize;
+use rpassword::prompt_password;
+use zeroize::{Zeroize, Zeroizing};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,14 +19,13 @@ pub struct WalletCommand {
 
 #[derive(Parser)]
 pub enum WalletAction {
+    /// Create a new wallet (password is prompted interactively — never passed as an argument)
     Create {
         name: String,
-        password: String,
     },
+    /// Import a wallet by private key (key and password are prompted interactively)
     Import {
-        private_key: String,
         name: String,
-        password: String,
     },
     List,
     Switch {
@@ -44,22 +44,16 @@ pub enum WalletAction {
     },
 }
 
-// Custom Debug implementation that redacts sensitive fields
+// Sensitive fields (password, private key) are never stored in WalletAction —
+// they are prompted interactively via rpassword and zeroized immediately after use.
 impl std::fmt::Debug for WalletAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WalletAction::Create { name, .. } => {
-                f.debug_struct("Create")
-                    .field("name", name)
-                    .field("password", &"<redacted>")
-                    .finish()
+            WalletAction::Create { name } => {
+                f.debug_struct("Create").field("name", name).finish()
             }
-            WalletAction::Import { name, .. } => {
-                f.debug_struct("Import")
-                    .field("name", name)
-                    .field("private_key", &"<redacted>")
-                    .field("password", &"<redacted>")
-                    .finish()
+            WalletAction::Import { name } => {
+                f.debug_struct("Import").field("name", name).finish()
             }
             WalletAction::List => write!(f, "List"),
             WalletAction::Switch { name } => {
@@ -84,35 +78,15 @@ impl std::fmt::Debug for WalletAction {
     }
 }
 
-impl Drop for WalletAction {
-    fn drop(&mut self) {
-        match self {
-            WalletAction::Create { password, .. } => {
-                password.zeroize();
-            }
-            WalletAction::Import { private_key, password, .. } => {
-                private_key.zeroize();
-                password.zeroize();
-            }
-            _ => {}
-        }
-    }
-}
-
 impl WalletCommand {
     pub async fn execute(&self) -> Result<()> {
         let config = Config::default(); // Use default config
         match &self.action {
-            WalletAction::Create { name, password } => {
-                self.create_wallet(&config, name, password).await?
+            WalletAction::Create { name } => {
+                self.create_wallet(&config, name).await?
             }
-            WalletAction::Import {
-                private_key,
-                name,
-                password,
-            } => {
-                self.import_wallet(&config, private_key, name, password)
-                    .await?
+            WalletAction::Import { name } => {
+                self.import_wallet(&config, name).await?
             }
             WalletAction::List => self.list_wallets(&config)?,
             WalletAction::Switch { name } => self.switch_wallet(name)?,
@@ -125,7 +99,7 @@ impl WalletCommand {
         Ok(())
     }
 
-    async fn create_wallet(&self, _config: &Config, name: &str, password: &str) -> Result<()> {
+    async fn create_wallet(&self, _config: &Config, name: &str) -> Result<()> {
         let wallet_file = constants::wallet_file_path();
         if wallet_file.exists() {
             let data = fs::read_to_string(&wallet_file)?;
@@ -134,45 +108,39 @@ impl WalletCommand {
                 return Err(anyhow!("Wallet with name '{}' already exists", name));
             }
         }
-        let wallet = PrivateKeySigner::random();
-        let secret_password = SecretPassword::new(password.to_string());
-        let wallet = Wallet::new(wallet, name, &secret_password)?;
-        let mut wallet_data = if wallet_file.exists() {
-            let data = fs::read_to_string(&wallet_file)?;
-            serde_json::from_str::<WalletData>(&data)?
-        } else {
-            WalletData::new()
-        };
-        let _ = wallet_data.add_wallet(wallet.clone());
-        crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
-        println!("{}", "🎉 Wallet created successfully".green());
-        println!("Address: {:?}", wallet.address());
-        println!("Wallet saved at: {}", wallet_file.display());
-        Ok(())
+        // Prompt interactively — never accept password as a CLI argument (shell history risk).
+        let pwd = Zeroizing::new(prompt_password("Enter wallet password: ")?);
+        let confirm = Zeroizing::new(prompt_password("Confirm wallet password: ")?);
+        if *pwd != *confirm {
+            return Err(anyhow!("Passwords do not match"));
+        }
+        let secret_password = SecretPassword::new(pwd.as_str().to_string());
+        create_wallet_with_credentials(name, &secret_password)
     }
 
     async fn import_wallet(
         &self,
         _config: &Config,
-        private_key: &str,
         name: &str,
-        password: &str,
     ) -> Result<()> {
-        let wallet = PrivateKeySigner::from_str(private_key)?;
-        let secret_password = SecretPassword::new(password.to_string());
-        let wallet = Wallet::new(wallet, name, &secret_password)?;
-        let wallet_file = constants::wallet_file_path();
-        let mut wallet_data = if wallet_file.exists() {
-            let data = fs::read_to_string(&wallet_file)?;
-            serde_json::from_str::<WalletData>(&data)?
-        } else {
-            WalletData::new()
-        };
-        let _ = wallet_data.add_wallet(wallet);
-        crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
-        println!("{}", "✅ Wallet imported successfully".green());
-        println!("Wallet saved at: {}", wallet_file.display());
-        Ok(())
+        // Prompt interactively — never accept private key or password as CLI arguments
+        // (they would appear in shell history and `ps aux`).
+        let mut raw_key = Zeroizing::new(prompt_password("Enter private key (input hidden): ")?);
+        // Strip optional 0x prefix and whitespace before parsing.
+        let trimmed = raw_key.trim().trim_start_matches("0x").to_string();
+        raw_key.zeroize();
+        let mut trimmed = Zeroizing::new(trimmed);
+        let signer = PrivateKeySigner::from_str(&trimmed)
+            .map_err(|e| anyhow!("Invalid private key: {}", e))?;
+        trimmed.zeroize();
+
+        let pwd = Zeroizing::new(prompt_password("Enter wallet password: ")?);
+        let confirm = Zeroizing::new(prompt_password("Confirm wallet password: ")?);
+        if *pwd != *confirm {
+            return Err(anyhow!("Passwords do not match"));
+        }
+        let secret_password = SecretPassword::new(pwd.as_str().to_string());
+        import_wallet_with_credentials(signer, name, &secret_password)
     }
 
     fn list_wallets(&self, _config: &Config) -> Result<()> {
@@ -306,4 +274,57 @@ impl WalletCommand {
         println!("Address: {}", address);
         Ok(())
     }
+}
+
+// ---------------------------------------------------------------------------
+// Public helpers — called by the interactive UI (interactive/wallet.rs) so it
+// can supply pre-validated credentials without constructing a WalletCommand.
+// Credentials are accepted via typed wrappers that zeroize on drop.
+// ---------------------------------------------------------------------------
+
+/// Create a new random wallet with a pre-validated password (e.g. from the TUI).
+pub fn create_wallet_with_credentials(name: &str, password: &SecretPassword) -> Result<()> {
+    let wallet_file = constants::wallet_file_path();
+    if wallet_file.exists() {
+        let data = fs::read_to_string(&wallet_file)?;
+        let wallet_data = serde_json::from_str::<WalletData>(&data)?;
+        if wallet_data.get_wallet_by_name(name).is_some() {
+            return Err(anyhow!("Wallet with name '{}' already exists", name));
+        }
+    }
+    let signer = PrivateKeySigner::random();
+    let wallet = Wallet::new(signer, name, password)?;
+    let mut wallet_data = if wallet_file.exists() {
+        let data = fs::read_to_string(&wallet_file)?;
+        serde_json::from_str::<WalletData>(&data)?
+    } else {
+        WalletData::new()
+    };
+    let _ = wallet_data.add_wallet(wallet.clone());
+    crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
+    println!("{}", "🎉 Wallet created successfully".green());
+    println!("Address: {:?}", wallet.address());
+    println!("Wallet saved at: {}", wallet_file.display());
+    Ok(())
+}
+
+/// Import a wallet from a pre-parsed signer with a pre-validated password (e.g. from the TUI).
+pub fn import_wallet_with_credentials(
+    signer: PrivateKeySigner,
+    name: &str,
+    password: &SecretPassword,
+) -> Result<()> {
+    let wallet = Wallet::new(signer, name, password)?;
+    let wallet_file = constants::wallet_file_path();
+    let mut wallet_data = if wallet_file.exists() {
+        let data = fs::read_to_string(&wallet_file)?;
+        serde_json::from_str::<WalletData>(&data)?
+    } else {
+        WalletData::new()
+    };
+    let _ = wallet_data.add_wallet(wallet);
+    crate::utils::secure_fs::write_secure(&wallet_file, &serde_json::to_string_pretty(&wallet_data)?)?;
+    println!("{}", "✅ Wallet imported successfully".green());
+    println!("Wallet saved at: {}", wallet_file.display());
+    Ok(())
 }
